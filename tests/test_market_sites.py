@@ -102,13 +102,16 @@ def test_multimarket_marks_site_down_once():
         said.append(t)
     mm.notify = notify
 
+    async def one():
+        with pytest.raises(IncompleteMarket):
+            await mm.analyze(CAR)
+
     async def run():
-        for _ in range(2):
-            with pytest.raises(IncompleteMarket):
-                await mm.analyze(CAR)
+        await asyncio.gather(one(), one(), one())  # три машины одновременно, как в боевом режиме
+        await one()
     asyncio.run(run())
-    assert avito_s.calls == 1  # после отказа площадку больше не дёргаем
-    assert len(said) == 1 and "Авито недоступен" in said[0]
+    assert avito_s.calls <= 3  # после отказа площадку больше не дёргаем
+    assert len(said) == 1 and "Авито недоступен" in said[0] and ".." not in said[0]
 
 
 # ---------------------------------------------------------------- настоящий браузер на локальных страницах

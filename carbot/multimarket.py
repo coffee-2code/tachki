@@ -92,9 +92,12 @@ class MultiMarket:
         try:
             return await src.fetch(car)
         except SiteUnavailable as exc:
-            self.down[src.name] = str(exc)
-            await self._say(f"{src.name} недоступен: {exc}. Машины без этой площадки останутся в «Кандидатах».")
-            return SourceResult(src.name, "", error=str(exc))
+            first = src.name not in self.down  # параллельные машины получают тот же отказ — сообщаем один раз
+            self.down.setdefault(src.name, str(exc))
+            if first:
+                await self._say(f"{src.name} недоступен: {str(exc).rstrip('.')}. "
+                                "Машины без этой площадки останутся в «Кандидатах».")
+            return SourceResult(src.name, "", error=self.down[src.name])
         except Exception as exc:  # noqa: BLE001 — сбой одной площадки на одной машине
             log.exception("%s failed for row %s", src.name, car.row)
             return SourceResult(src.name, "", error=f"ошибка: {exc}")
