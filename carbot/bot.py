@@ -15,7 +15,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Inli
 from .autoteka import AutotekaClient
 from .config import settings as s
 from .excel_io import is_not_passenger, read_cars, write_result
-from .drom import DromMarket
+from .multimarket import MultiMarket
 from .market import MarketAnalyzer
 from .pipeline import evaluate_rest, market_groups, stage_file
 
@@ -30,9 +30,12 @@ def _n(x: float) -> str:
     return f"{x:,.0f}".replace(",", " ")
 
 
+SITE_NAMES = {"drom": "Дром", "autoru": "Авто.ру", "avito": "Авито"}
+SITES = ", ".join(SITE_NAMES.get(k, k) for k in s.market_sources)
 _MARKET_HELP = (
-    "3. Сам собираю цены похожих машин на Дроме (бесплатно), считаю прибыль; неликвид и малую маржу убираю.\n"
-    if s.market_source == "drom" else
+    f"3. Сам собираю цены похожих машин: {SITES} (бесплатно). Вывод о выгоде — только когда проверены все "
+    "площадки; неликвид и малую маржу убираю.\n"
+    if s.market_source != "claude" else
     "3. Ищу цены и спрос на Авито, Авто.ру, Дроме и форумах через Claude; неликвид и малую маржу убираю.\n"
 )
 HELP = (
@@ -126,7 +129,7 @@ async def on_document(m: Message, bot: Bot) -> None:
         _cost_line(evals, groups),
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Анализ рынка на Дроме" if s.market_source == "drom"
+        [InlineKeyboardButton(text=f"Проверить рынок: {SITES}" if s.market_source != "claude"
                               else f"Анализ рынка ({groups})", callback_data="run")],
         [InlineKeyboardButton(text="Только список кандидатов", callback_data="list")],
         [InlineKeyboardButton(text="Отмена", callback_data="cancel")],
@@ -137,12 +140,14 @@ async def on_document(m: Message, bot: Bot) -> None:
 
 
 def _cost_line(evals: list, groups: int) -> str:
-    if s.market_source != "drom":
+    if s.market_source == "claude":
         return f"Прикидка стоимости анализа: ~${groups * s.usd_per_market_check:.0f} (API Claude)."
     pages = len({(e.car.brand.lower(), e.car.model.lower(), e.car.year) for e in evals if e.stage == "candidate"})
-    avg = (s.drom_delay_min + s.drom_delay_max) / 2
-    minutes = max(1, round(pages * 2 * avg / 60))
-    return f"Анализ на Дроме бесплатный, займёт примерно {minutes} мин."
+    avg = (s.browser_delay_min + s.browser_delay_max) / 2 + 3  # пауза + загрузка страницы
+    minutes = max(1, round(pages * 2 * avg / 60))  # площадки идут параллельно, ~2 страницы на модель
+    extra = (" Откроется окно браузера — если Авто.ру или Авито спросят «я не робот», решите капчу, я подожду."
+             if {"autoru", "avito"} & set(s.market_sources) else "")
+    return f"Проверка рынка бесплатная ({SITES}), займёт примерно {minutes} мин.{extra}"
 
 
 async def _send_result(m: Message, evals: list, stem: str, caption: str) -> None:
@@ -186,7 +191,7 @@ async def on_choice(cb: CallbackQuery) -> None:
         log.info(text)
 
     try:
-        market = DromMarket(s) if s.market_source == "drom" else MarketAnalyzer(s)
+        market = MarketAnalyzer(s) if s.market_source == "claude" else MultiMarket(s)
         autoteka = AutotekaClient(s)
         try:
             evals = await evaluate_rest(evals, s, market, autoteka, progress)

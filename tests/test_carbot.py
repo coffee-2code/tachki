@@ -97,9 +97,12 @@ class FakeAutoteka:
 
 
 def mr(median, liq=8, n=20):
-    return MarketReport(median_price=median, min_price=median - 200_000, max_price=median + 200_000,
-                        listings_found=n, liquidity=liq, days_to_sell=20, demand_notes="спрос есть",
-                        known_issues="", sources=["https://auto.ru/x"])
+    from carbot.multimarket import MultiMarketReport
+    return MultiMarketReport(median_price=median, min_price=median - 200_000, max_price=median + 200_000,
+                             listings_found=n, liquidity=liq, days_to_sell=20, demand_notes="спрос есть",
+                             known_issues="", sources=["https://auto.drom.ru/x"],
+                             by_source=[{"name": "Дром", "url": "https://auto.drom.ru/x", "median": median,
+                                         "comps": 10, "total": n, "status": "ok"}])
 
 
 def test_pipeline(tmp_path, s):
@@ -153,7 +156,10 @@ def test_pipeline(tmp_path, s):
     profits = [wp.cell(r, head.index("Прибыль") + 1).value for r in range(4, wp.max_row + 1)]
     assert profits == sorted(profits, reverse=True)
     assert wp.cell(4, head.index("Итог") + 1).value == "БЕРЁМ"
-    assert wp.cell(4, head.index("Дром") + 1).hyperlink is not None  # ссылка на объявления
+    assert wp.cell(4, head.index("Дром\n↗") + 1).hyperlink is not None  # ссылка на объявления
+    assert wp.cell(4, head.index("Дром:\nмедиана") + 1).value == 2_000_000
+    assert wp.cell(4, head.index("После скидки\n−15 %") + 1).value == pytest.approx(1_700_000)
+    assert wp.cell(4, head.index("Платим:\n× 0,86 (нал)") + 1).value == pytest.approx(1_462_000)
     assert wb["Берём"].max_row == 4 and wb["Отсеяно"].max_row == 3 + 6
 
 

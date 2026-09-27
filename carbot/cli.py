@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .autoteka import AutotekaClient
 from .config import settings as s
-from .drom import DromMarket
+from .multimarket import MultiMarket
 from .excel_io import is_not_passenger, read_cars, write_result
 from .market import MarketAnalyzer
 from .pipeline import evaluate_rest, stage_file
@@ -25,7 +25,7 @@ async def run(path: Path, only_list: bool) -> Path:
     print(f"Строк с ценой: {len(cars)}, легковых: {len(passenger)}, кандидатов после бесплатного отсева: {len(cands)}")
 
     if not only_list and cands:
-        market = DromMarket(s) if s.market_source == "drom" else MarketAnalyzer(s)
+        market = MarketAnalyzer(s) if s.market_source == "claude" else MultiMarket(s)
         autoteka = AutotekaClient(s)
 
         async def progress(text: str) -> None:

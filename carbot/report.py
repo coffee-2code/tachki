@@ -82,15 +82,37 @@ C_CAR = Col("Автомобиль", 30, lambda e: f"{e.car.brand} {e.car.model}"
 C_YEAR = Col("Год", 7, lambda e: e.car.year, "year")
 C_KM = Col("Пробег", 12, lambda e: e.car.mileage or None, "km")
 C_REGION = Col("Регион", 16, lambda e: _lot(e.car, "федеральный округ", "регион", "город"))
-C_SRS = Col("Цена в файле", 14, lambda e: e.car.price, "money")
-C_PAY = Col("Платим (нал)", 14, lambda e: e.cash_price, "money")
-C_MEDIAN = Col("Медиана рынка", 14, lambda e: e.market.median_price if e.market else None, "money")
-C_SALE = Col("Продадим за", 14, lambda e: e.expected_sale, "money")
+C_SRS = Col("Стартовая цена\n(СРС)", 15, lambda e: e.car.price, "money")
+C_MINUS = Col("После скидки\n−15 %", 15, lambda e: e.purchase_price, "money")
+C_PAY = Col("Платим:\n× 0,86 (нал)", 15, lambda e: e.cash_price, "money")
+C_MEDIAN = Col("Рынок: итог\n(медиана площадок)", 16, lambda e: e.market.median_price if e.market else None, "money")
+C_SALE = Col("Продадим за\n(−5 % торг)", 15, lambda e: e.expected_sale, "money")
 C_PROFIT = Col("Прибыль", 14, lambda e: e.profit, "money")
 C_MARGIN = Col("Маржа", 8, _margin, "pct")
 C_LIQ = Col("Ликвид-\nность", 9, lambda e: e.market.liquidity if e.market else None, "liq")
 C_DAYS = Col("Продажа,\nдней", 9, lambda e: e.market.days_to_sell if e.market else None, "int")
 C_ADS = Col("Объяв-\nлений", 9, lambda e: e.market.listings_found if e.market else None, "int")
+def _site(e: Evaluation, name: str) -> Optional[dict]:
+    for b in getattr(e.market, "by_source", None) or []:
+        if b["name"] == name:
+            return b
+    return None
+
+
+def _site_price(name: str) -> Col:
+    def get(e: Evaluation):
+        b = _site(e, name)
+        return b["median"] if b and b["median"] else (b["status"] if b else None)
+    return Col(f"{name}:\nмедиана", 14, get, "money")
+
+
+def _site_link(name: str) -> Col:
+    return Col(f"{name}\n↗", 9, lambda e: (_site(e, name) or {}).get("url") or None, "link")
+
+
+SITES = ("Дром", "Авто.ру", "Авито")
+C_SITE_PRICES = [_site_price(n) for n in SITES]
+C_SITE_LINKS = [_site_link(n) for n in SITES]
 C_DROM = Col("Дром", 9, _link, "link")
 C_PHOTO = Col("Фото", 9, lambda e: _lot(e.car, "фото"), "link")
 C_LOT = Col("Код лота", 10, lambda e: _lot(e.car, "код предложения", "код лота", "лот"))
@@ -118,7 +140,7 @@ def _table(ws: Worksheet, title: str, subtitle: str, cols: list[Col], evals: lis
         cell.fill = HEADER_FILL
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         ws.column_dimensions[get_column_letter(c)].width = col.width
-    ws.row_dimensions[3].height = 34
+    ws.row_dimensions[3].height = 44
 
     for i, e in enumerate(evals, start=1):
         r = i + 3
@@ -135,7 +157,10 @@ def _table(ws: Worksheet, title: str, subtitle: str, cols: list[Col], evals: lis
                 cell.fill = ZEBRA_FILL
             if v is None:
                 continue
-            if col.kind == "money":
+            if col.kind == "money" and isinstance(v, str):
+                cell.font = f(9, color=MUTED)  # «мало объявлений», «не проверено: …»
+                cell.alignment = Alignment(wrap_text=True, vertical="center")
+            elif col.kind == "money":
                 cell.number_format = MONEY
             elif col.kind == "km":
                 cell.number_format = KM
@@ -237,8 +262,8 @@ def _summary(ws: Worksheet, evals: list[Evaluation], total_rows: int, source_nam
 
     row = _section(ws, 7, "Лучшие по прибыли")
     if good:
-        _mini_header(ws, row, ["№", "Автомобиль", "Год", "Пробег", "Платим", "Продадим за", "Прибыль", "Маржа",
-                               "Ликвидность", "Регион", "Дром", "Код лота"])
+        _mini_header(ws, row, ["№", "Автомобиль", "Год", "Пробег", "Платим (нал)", "Продадим за", "Прибыль",
+                               "Маржа", "Ликвидность", "Регион", "Объявления", "Код лота"])
         for i, e in enumerate(good[:10], start=1):
             r = row + i
             vals = [i, f"{e.car.brand} {e.car.model}", e.car.year, e.car.mileage or None, e.cash_price,
@@ -301,15 +326,19 @@ def _summary(ws: Worksheet, evals: list[Evaluation], total_rows: int, source_nam
 
     row = _section(ws, row, "Условия отбора")
     conds = [
-        ("Цена закупки", f"цена в файле − {s.seller_discount:.0%}, затем × {s.cash_factor} (наличка, полный НДС)"),
-        ("Прибыль", f"медиана рынка × {1 - s.sale_discount:.2f} − цена закупки − {s.prep_cost_rub:,} ₽ подготовка"
+        ("Цена закупки", f"стартовая цена (СРС) − {s.seller_discount:.0%}, затем × {s.cash_factor} "
+                         "(наличка, полный НДС)"),
+        ("Рынок", "Дром, Авто.ру и Авито: у каждой площадки медиана похожих объявлений (тот же год, пробег ±35 %, "
+                  "без битых); итог — медиана трёх площадок. Вывод о выгоде — только если проверены все"
+         if s.market_source != "claude" else "Claude с веб-поиском по площадкам и форумам"),
+        ("Прибыль", f"рынок × {1 - s.sale_discount:.2f} (торг) − цена закупки − {s.prep_cost_rub:,} ₽ подготовка"
                     .replace(",", " ")),
         ("Лоты", f"тип: {', '.join(s.vehicle_types)}; статус: {', '.join(s.allow_statuses)}"
                  + ("; без правого руля" if s.skip_rhd else "") + ("; с ключами" if s.skip_no_keys else "")),
         ("Состояние", "не " + ", ".join(s.bad_conditions) + "; в комментариях нет: " + ", ".join(s.bad_words)),
         ("Год и пробег", f"от {s.min_year or s.current_year - s.max_age_years} г.; до {s.max_mileage_km:,} км; "
                          f"до {s.max_km_per_year:,} км/год".replace(",", " ")),
-        ("Рынок", f"ликвидность от {s.min_liquidity}/10; прибыль от {s.min_profit_rub:,} ₽".replace(",", " ")),
+        ("Пороги", f"ликвидность от {s.min_liquidity}/10; прибыль от {s.min_profit_rub:,} ₽".replace(",", " ")),
         ("Автотека", f"владельцев до {s.max_owners}; ДТП до {s.max_accidents}; без скрутки"),
     ]
     for i, (k, v) in enumerate(conds, start=1):
@@ -357,11 +386,10 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
         _table(w, f"Берём — {plural(len(good), 'машина', 'машины', 'машин')}, прибыль {profit}",
                "Прошли все этапы. Отсортировано по прибыли. VIN проверьте в Автотеке перед покупкой, "
                "если она не подключена.",
-               [C_CAR, C_YEAR, C_KM, C_REGION, C_SRS, C_PAY, C_SALE, C_PROFIT, C_MARGIN, C_LIQ, C_DAYS, C_DROM,
-                C_PHOTO, Col("Владель-\nцев", 9, lambda e: _history(e, "owners"), "int"),
+               [C_CAR, C_YEAR, C_KM, C_REGION, C_SRS, C_MINUS, C_PAY, *C_SITE_PRICES, C_MEDIAN, C_SALE,
+                C_PROFIT, C_MARGIN, C_LIQ, C_DAYS, *C_SITE_LINKS, C_PHOTO, Col("Владель-\nцев", 9, lambda e: _history(e, "owners"), "int"),
                 Col("ДТП", 6, lambda e: _history(e, "accidents"), "int"),
-                C_LOT, C_VIN, C_MOD, C_COND, C_KEYS, C_NOTES,
-                Col("Спрос", 40, lambda e: e.market.demand_notes if e.market else "", "wrap")],
+                C_LOT, C_VIN, C_MOD, C_COND, C_KEYS, C_NOTES],
                good, s.min_profit_rub)
 
     if priced:
@@ -371,7 +399,8 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
                f"Порог прибыли {s.min_profit_rub:,} ₽, ликвидности {s.min_liquidity}/10. ".replace(",", " ")
                + "Здесь видно и то, что не дотянуло.",
                [Col("Итог", 9, lambda e: "БЕРЁМ" if e.passed else "нет", "badge"),
-                C_CAR, C_YEAR, C_KM, C_SRS, C_PAY, C_MEDIAN, C_SALE, C_PROFIT, C_MARGIN, C_LIQ, C_ADS, C_DROM,
+                C_CAR, C_YEAR, C_KM, C_SRS, C_MINUS, C_PAY, *C_SITE_PRICES, C_MEDIAN, C_SALE, C_PROFIT, C_MARGIN,
+                C_LIQ, C_ADS, *C_SITE_LINKS,
                 Col("Почему нет", 50, lambda e: "\n".join(e.reasons), "wrap")],
                priced, s.min_profit_rub)
 
@@ -380,7 +409,8 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
         w.sheet_properties.tabColor = "9CA3AF"
         _table(w, f"Кандидаты — {len(cands)}",
                "Прошли бесплатный отсев, рынок по ним не проверялся.",
-               [C_CAR, C_YEAR, C_KM, C_REGION, C_SRS, C_PAY, C_COND, C_KEYS, C_PHOTO, C_LOT, C_VIN, C_MOD, C_NOTES],
+               [C_CAR, C_YEAR, C_KM, C_REGION, C_SRS, C_MINUS, C_PAY, C_COND, C_KEYS, C_PHOTO, C_LOT, C_VIN, C_MOD,
+                C_NOTES],
                cands)
 
     w = wb.create_sheet("Отсеяно")
@@ -389,7 +419,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
            "Грузовики, прицепы и спецтехника в отчёт не включены. Фильтр по колонке «Причина» — стрелка в шапке.",
            [C_CAR, Col("Причина", 20, lambda e: e.reasons[0].split(":")[0] if e.reasons else ""),
             Col("Подробно", 44, lambda e: "\n".join(e.reasons), "wrap"),
-            C_YEAR, C_KM, C_SRS, C_PAY, C_PROFIT,
+            C_YEAR, C_KM, C_SRS, C_MINUS, C_PAY, C_PROFIT,
             Col("Этап", 9, lambda e: STAGE_NAMES.get(e.stage, e.stage)), C_LOT, C_VIN],
            bad)
 

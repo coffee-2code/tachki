@@ -8,7 +8,8 @@ from typing import Awaitable, Callable, Optional
 from . import pricing
 from .autoteka import AutotekaClient, is_valid_vin
 from .config import Settings
-from .drom import DromBlocked
+from .listings import SiteUnavailable
+from .multimarket import IncompleteMarket
 from .filters import file_stage_reasons
 from .market import MarketAnalyzer
 from .models import Car, Evaluation
@@ -63,6 +64,8 @@ async def evaluate_rest(
         if progress:
             await progress(msg)
 
+    if hasattr(market, "notify"):
+        market.notify = say  # сообщения площадок (капча и т. п.) — в Telegram/консоль
     to_market = [e for e in evals if e.stage == "candidate"]
     for e in to_market:
         e.stage = "market"
@@ -78,7 +81,7 @@ async def evaluate_rest(
         nonlocal done
         async with sem:
             if blocked:
-                raise DromBlocked(blocked[0])
+                raise SiteUnavailable(blocked[0])
             try:
                 return await market.analyze(car)
             finally:
@@ -94,7 +97,11 @@ async def evaluate_rest(
     async def run_market(e: Evaluation) -> None:
         try:
             e.market = await groups[key(e.car)]
-        except DromBlocked as exc:  # капча: не проверенные возвращаем в кандидаты, отчёт всё равно отдаём
+        except IncompleteMarket as exc:  # не все площадки проверены — вывод не делаем, машина остаётся кандидатом
+            e.stage = "candidate"
+            e.notes.append(str(exc))
+            return
+        except SiteUnavailable as exc:  # площадка встала совсем: непроверенные — в кандидаты, отчёт отдаём
             if not blocked:
                 blocked.append(str(exc))
             e.stage = "candidate"
@@ -120,14 +127,16 @@ async def evaluate_rest(
     if blocked:
         await say(f"{blocked[0]} Уже проверенные машины — в отчёте, остальные — на листе «Кандидаты».")
     to_history = [e for e in to_market if e.stage == "autoteka"]
-    await say(f"Этап 2 — рынок: перспективных {len(to_history)} из {len(to_market)}.")
+    unchecked = sum(e.stage == "candidate" for e in to_market)
+    await say(f"Этап 2 — рынок: перспективных {len(to_history)} из {len(to_market)}"
+              + (f", не проверено на всех площадках: {unchecked}." if unchecked else "."))
 
     # ---- этап 3: Автотека
     if autoteka is None or not autoteka.enabled:
         for e in to_history:
             e.passed = True
             e.stage = "ok"
-            e.notes.append("Автотека не подключена — пробейте VIN вручную перед покупкой")
+            e.notes.append("Автотека: пробить VIN вручную")
         if to_history:
             await say("Автотека не подключена: перспективные отмечены как «проверить вручную».")
         return evals

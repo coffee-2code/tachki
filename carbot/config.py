@@ -60,8 +60,17 @@ class Settings:
     ])
 
     # --- этап 2: рынок ---
-    # drom — бесплатно, бот сам собирает цены с Дрома; claude — платно, Claude с веб-поиском и форумами
-    market_source: str = field(default_factory=lambda: os.getenv("MARKET_SOURCE", "drom").strip().lower())
+    # free — бесплатно, бот сам собирает цены с площадок MARKET_SOURCES; claude — платно, Claude с веб-поиском
+    market_source: str = field(default_factory=lambda: os.getenv("MARKET_SOURCE", "free").strip().lower())
+    market_sources: list[str] = field(default_factory=lambda: _list("MARKET_SOURCES") or ["drom", "autoru", "avito"])
+    sources_required: int = field(default_factory=lambda: _i("SOURCES_REQUIRED", 0))  # 0 — все из MARKET_SOURCES
+    browser_headless: bool = field(default_factory=lambda: _b("BROWSER_HEADLESS", False))  # окно видно — капчу решаете вы
+    browser_channel: str = field(default_factory=lambda: os.getenv("BROWSER_CHANNEL", "chrome"))  # ваш Chrome
+    browser_delay_min: float = field(default_factory=lambda: _f("BROWSER_DELAY_MIN", 2.0))
+    browser_delay_max: float = field(default_factory=lambda: _f("BROWSER_DELAY_MAX", 5.0))
+    captcha_wait_sec: int = field(default_factory=lambda: _i("CAPTCHA_WAIT_SEC", 180))
+    autoru_max_pages: int = field(default_factory=lambda: _i("AUTORU_MAX_PAGES", 2))
+    avito_max_pages: int = field(default_factory=lambda: _i("AVITO_MAX_PAGES", 2))
     drom_max_pages: int = field(default_factory=lambda: _i("DROM_MAX_PAGES", 3))       # по 20 объявлений
     drom_delay_min: float = field(default_factory=lambda: _f("DROM_DELAY_MIN", 2.0))   # паузы между запросами, сек
     drom_delay_max: float = field(default_factory=lambda: _f("DROM_DELAY_MAX", 5.0))

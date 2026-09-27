@@ -8,3 +8,5 @@ reports/
 out/
 drom_slugs.json
 debug/
+browser_profile/
+autoru_slugs.json
