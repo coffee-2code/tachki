@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 
-import anthropic
 
 from .config import Settings
 from .models import Car, MarketReport
@@ -51,9 +50,15 @@ def _car_prompt(car: Car) -> str:
 
 
 class MarketAnalyzer:
-    def __init__(self, s: Settings, client: anthropic.AsyncAnthropic | None = None):
+    def __init__(self, s: Settings, client=None):
         self.s = s
-        self.client = client or anthropic.AsyncAnthropic()
+        if client is None:
+            try:
+                import anthropic
+            except ImportError as exc:
+                raise RuntimeError("для MARKET_SOURCE=claude нужен pip install -r requirements-claude.txt") from exc
+            client = anthropic.AsyncAnthropic()
+        self.client = client
 
     async def _research(self, car: Car) -> str:
         messages = [{"role": "user", "content": _car_prompt(car)}]

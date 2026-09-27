@@ -38,7 +38,7 @@
 Linux / macOS / сервер:
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt && cp .env.example .env
+pip install -r requirements.txt && python -m playwright install chromium && cp .env.example .env
 python -m carbot.cli реестр.xlsx      # разово по файлу
 python -m carbot                      # Telegram-бот
 ```
@@ -53,7 +53,7 @@ python -m carbot                      # Telegram-бот
 
 ## Платный режим (по желанию)
 
-`MARKET_SOURCE=claude` — вместо Дрома рынок анализирует Claude с веб-поиском: Авито, Авто.ру, Дром, форумы, типичные болячки. Нужен `ANTHROPIC_API_KEY`, примерно $0,3–0,5 за модель.
+`MARKET_SOURCE=claude` (плюс `pip install -r requirements-claude.txt`) — вместо Дрома рынок анализирует Claude с веб-поиском: Авито, Авто.ру, Дром, форумы, типичные болячки. Нужен `ANTHROPIC_API_KEY`, примерно $0,3–0,5 за модель.
 
 ## Структура
 

@@ -20,7 +20,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import anthropic
 import httpx
 from pydantic import BaseModel, Field
 
@@ -61,9 +60,9 @@ def detect_rollback(records: list[tuple[str, int]], tolerance: int) -> bool:
 
 
 class AutotekaClient:
-    def __init__(self, s: Settings, claude: anthropic.AsyncAnthropic | None = None):
+    def __init__(self, s: Settings, claude=None):
         self.s = s
-        self.claude = claude or anthropic.AsyncAnthropic()
+        self._claude = claude  # нужен только для разбора отчёта Автотеки; создаётся при первом отчёте
         self._token: Optional[str] = None
         self.http = httpx.AsyncClient(base_url=BASE_URL, timeout=60)
 
@@ -124,6 +123,16 @@ class AutotekaClient:
                 raise RuntimeError(f"Автотека: отчёт не собран ({status})")
             await asyncio.sleep(5)
         raise RuntimeError("Автотека: отчёт не готов за 5 минут")
+
+    @property
+    def claude(self):
+        if self._claude is None:
+            try:
+                import anthropic
+            except ImportError as exc:
+                raise RuntimeError("для разбора Автотеки нужен pip install -r requirements-claude.txt") from exc
+            self._claude = anthropic.AsyncAnthropic()
+        return self._claude
 
     async def _extract(self, raw: dict) -> _HistoryExtract:
         resp = await self.claude.messages.parse(
