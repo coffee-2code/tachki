@@ -59,7 +59,12 @@ class Settings:
         "не продавать", "проблемное", "после дтп", "криминал", "арест", "розыск", "залог",
     ])
 
-    # --- этап 2: рынок (Claude + веб-поиск) ---
+    # --- этап 2: рынок ---
+    # drom — бесплатно, бот сам собирает цены с Дрома; claude — платно, Claude с веб-поиском и форумами
+    market_source: str = field(default_factory=lambda: os.getenv("MARKET_SOURCE", "drom").strip().lower())
+    drom_max_pages: int = field(default_factory=lambda: _i("DROM_MAX_PAGES", 3))       # по 20 объявлений
+    drom_delay_min: float = field(default_factory=lambda: _f("DROM_DELAY_MIN", 2.0))   # паузы между запросами, сек
+    drom_delay_max: float = field(default_factory=lambda: _f("DROM_DELAY_MAX", 5.0))
     min_liquidity: int = field(default_factory=lambda: _i("MIN_LIQUIDITY", 6))            # 1..10
     sale_discount: float = field(default_factory=lambda: _f("SALE_DISCOUNT", 0.05))       # торг при продаже
     prep_cost_rub: int = field(default_factory=lambda: _i("PREP_COST_RUB", 40_000))       # подготовка, оформление

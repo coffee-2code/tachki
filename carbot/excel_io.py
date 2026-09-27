@@ -161,26 +161,44 @@ BAD_FILL = PatternFill("solid", fgColor="FBE4E4")
 STAGE_NAMES = {"file": "1. Файл", "market": "2. Рынок", "autoteka": "3. Автотека", "ok": "Прошла"}
 
 
-def _write_table(ws, headers: list[str], rows: list[list], widths: list[int], fill=None) -> None:
+MONEY_HEADERS = ("цена", "платим", "рынок", "медиана", "продадим", "прибыль", "−15", "подготовка", "срс")
+KM_HEADERS = ("пробег",)
+LINK_FONT = Font(color="1F5FBF", underline="single")
+
+
+def _write_table(ws, headers: list[str], rows: list[list], widths: list[int], fill=None, min_profit=None) -> None:
     ws.append(headers)
     for c in range(1, len(headers) + 1):
         cell = ws.cell(1, c)
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = HEAD_FILL
         cell.alignment = Alignment(wrap_text=True, vertical="center")
+    ws.row_dimensions[1].height = 32
     for row in rows:
         ws.append(row)
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
+    kinds = {}
+    for c, h in enumerate(headers, start=1):
+        low = h.lower()
+        kinds[c] = "money" if any(k in low for k in MONEY_HEADERS) else "km" if any(k in low for k in KM_HEADERS) else ""
     for r in range(2, ws.max_row + 1):
         for c in range(1, len(headers) + 1):
             cell = ws.cell(r, c)
             cell.alignment = Alignment(wrap_text=True, vertical="top")
-            if isinstance(cell.value, (int, float)) and c > 3:
-                cell.number_format = "# ##0"
-            if fill:
+            v = cell.value
+            if isinstance(v, (int, float)) and kinds[c]:
+                cell.number_format = '#,##0" ₽"' if kinds[c] == "money" else '#,##0" км"'
+            if isinstance(v, str) and v.startswith("http") and "\n" not in v:
+                cell.hyperlink = v
+                cell.value = "открыть"
+                cell.font = LINK_FONT
+            elif fill:
                 cell.fill = fill
-    ws.freeze_panes = "B2"
+            if headers[c - 1] == "Прибыль" and isinstance(v, (int, float)):
+                good = min_profit is not None and v >= min_profit
+                cell.font = Font(bold=True, color="1E7A4C" if good else "B42318" if v < 0 else "15171C")
+    ws.freeze_panes = "C2"
     ws.auto_filter.ref = ws.dimensions
 
 
@@ -192,6 +210,12 @@ def _lot(c: Car) -> list[str]:
     return [c.get("код предложения", "код лота", "лот", "код"), c.get("модификация"),
             c.get("федеральный округ", "регион", "город"), c.get("состояние"),
             c.get("количество ключей", "ключ"), c.get("фото")]
+
+
+def _src(e: Evaluation) -> str:
+    if not e.market or not e.market.sources:
+        return ""
+    return e.market.sources[0] if len(e.market.sources) == 1 else "\n".join(e.market.sources[:5])
 
 
 def _r(x):
@@ -213,7 +237,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
             ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "−15 %", "Платим (нал)",
              "Медиана рынка", "Продадим за", "Прибыль", "Маржа, %", "Ликвидность /10", "Продажа, дней",
              "Владельцев", "ДТП", "Код лота", "Модификация", "Регион", "Состояние", "Ключи", "Фото",
-             "Заметки", "Спрос и отзывы", "Болячки", "Источники"],
+             "Заметки", "Спрос и отзывы", "Болячки", "Объявления"],
             [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.purchase_price),
               _r(e.cash_price), e.market.median_price if e.market else None, _r(e.expected_sale), _r(e.profit),
               round(e.profit / e.cash_price * 100, 1) if e.cash_price and e.profit is not None else None,
@@ -222,9 +246,9 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
               e.history.accidents if e.history else "не проверено",
               *_lot(e.car), "\n".join(e.notes),
               e.market.demand_notes if e.market else "", e.market.known_issues if e.market else "",
-              "\n".join(e.market.sources[:5]) if e.market else ""] for e in good],
+              _src(e)] for e in good],
             [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 9, 10, 10, 10, 8, 10, 22, 14, 18, 14, 30, 35, 45, 40, 45],
-            GOOD_FILL,
+            GOOD_FILL, s.min_profit_rub,
         )
 
     priced = sorted([e for e in evals if e.profit is not None], key=lambda e: e.profit, reverse=True)
@@ -234,17 +258,19 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
             wsp,
             ["Стр.", "Автомобиль", "Пробег, км", "Платим (нал)", "Рынок: от", "Рынок: медиана", "Рынок: до",
              "Продадим за", "Подготовка", "Прибыль", "Маржа, %", "Ликвидность /10", "Продажа, дней",
-             "Объявлений", "Итог", "Почему нет"],
+             "Объявлений", "Объявления", "Итог", "Почему нет"],
             [[e.car.row, e.car.title, e.car.mileage, _r(e.cash_price), e.market.min_price, e.market.median_price,
               e.market.max_price, _r(e.expected_sale), s.prep_cost_rub, _r(e.profit),
               round(e.profit / e.cash_price * 100, 1) if e.cash_price else None,
-              e.market.liquidity, e.market.days_to_sell, e.market.listings_found,
+              e.market.liquidity, e.market.days_to_sell, e.market.listings_found, _src(e),
               "БЕРЁМ" if e.passed else "нет", "\n".join(e.reasons)] for e in priced],
-            [6, 28, 11, 13, 13, 13, 13, 13, 11, 12, 9, 10, 10, 10, 8, 50],
+            [6, 28, 11, 13, 13, 13, 13, 13, 11, 12, 9, 10, 10, 10, 11, 8, 50],
+            None, s.min_profit_rub,
         )
         for r, e in enumerate(priced, start=2):
             wsp.cell(r, 11).number_format = "0.0"
-            wsp.cell(r, 15).fill = GOOD_FILL if e.passed else BAD_FILL
+            wsp.cell(r, 16).fill = GOOD_FILL if e.passed else BAD_FILL
+            wsp.cell(r, 16).font = Font(bold=True)
 
     cands = [e for e in evals if e.stage == "candidate"]  # прошли бесплатный отсев, рынок не проверялся
     if cands:

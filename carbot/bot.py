@@ -15,6 +15,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Inli
 from .autoteka import AutotekaClient
 from .config import settings as s
 from .excel_io import is_not_passenger, read_cars, write_result
+from .drom import DromMarket
 from .market import MarketAnalyzer
 from .pipeline import evaluate_rest, market_groups, stage_file
 
@@ -25,18 +26,27 @@ dp = Dispatcher()
 _busy: set[int] = set()
 _pending: dict[int, tuple[list, str]] = {}  # файл ждёт подтверждения платного этапа
 
+def _n(x: float) -> str:
+    return f"{x:,.0f}".replace(",", " ")
+
+
+_MARKET_HELP = (
+    "3. Сам собираю цены похожих машин на Дроме (бесплатно), считаю прибыль; неликвид и малую маржу убираю.\n"
+    if s.market_source == "drom" else
+    "3. Ищу цены и спрос на Авито, Авто.ру, Дроме и форумах через Claude; неликвид и малую маржу убираю.\n"
+)
 HELP = (
     "Пришлите Excel-файл (.xlsx) со списком машин — я отберу ликвидные с хорошей маржой.\n\n"
     "Нужны колонки: <b>Марка</b> и <b>Модель</b> (или одна «Наименование»), <b>Год</b>, <b>Пробег</b>, "
     "<b>Цена</b>, <b>VIN</b>. Колонка <b>НДС</b> — по желанию.\n\n"
     "Как считаю:\n"
     f"1. Цена − {s.seller_discount:.0%} (скидка продавца), для полного НДС ещё × {s.cash_factor} — цена за наличку.\n"
-    f"2. Выкидываю: не легковые, не «В продаже», правый руль, без ключей, HARD и «удовлетворительное», тотал/ДТП/«не на ходу» "
-    f"в комментариях, старше {s.min_year or s.current_year - s.max_age_years} г., "
-    f"пробег больше {s.max_mileage_km:,} км.\n".replace(",", " ") +
-    "3. Ищу цены и спрос на Авито, Авто.ру, Дроме и форумах; неликвид и малую маржу убираю.\n"
-    f"4. Только оставшиеся пробиваю в Автотеке: больше {s.max_owners} владельцев, больше {s.max_accidents} ДТП "
-    "или скрутка — мимо.\n\n"
+    "2. Выкидываю: не легковые, не «В продаже», правый руль, без ключей, HARD и «удовлетворительное», "
+    f"тотал/ДТП/«не на ходу» в комментариях, выпуск раньше {s.min_year or s.current_year - s.max_age_years} г., "
+    f"пробег больше {_n(s.max_mileage_km)} км.\n"
+    + _MARKET_HELP +
+    f"4. Прибыль от {_n(s.min_profit_rub)} ₽. Оставшиеся пробиваю в Автотеке (если подключена): "
+    f"больше {s.max_owners} владельцев, больше {s.max_accidents} ДТП или скрутка — мимо.\n\n"
     "/settings — текущие пороги"
 )
 
@@ -113,16 +123,26 @@ async def on_document(m: Message, bot: Bot) -> None:
         *[f"  • {html.escape(k)}: {n}" for k, n in top],
         "",
         f"Кандидатов: <b>{len(to_market)}</b> — это <b>{groups}</b> разных моделей для анализа рынка.",
-        f"Прикидка стоимости анализа: ~${groups * s.usd_per_market_check:.0f} (API Claude).",
+        _cost_line(evals, groups),
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"Анализ рынка ({groups})", callback_data="run")],
+        [InlineKeyboardButton(text="Анализ рынка на Дроме" if s.market_source == "drom"
+                              else f"Анализ рынка ({groups})", callback_data="run")],
         [InlineKeyboardButton(text="Только список кандидатов", callback_data="list")],
         [InlineKeyboardButton(text="Отмена", callback_data="cancel")],
     ])
     await m.answer("\n".join(lines), reply_markup=kb if to_market else None)
     if not to_market:
         _pending.pop(uid, None)
+
+
+def _cost_line(evals: list, groups: int) -> str:
+    if s.market_source != "drom":
+        return f"Прикидка стоимости анализа: ~${groups * s.usd_per_market_check:.0f} (API Claude)."
+    pages = len({(e.car.brand.lower(), e.car.model.lower(), e.car.year) for e in evals if e.stage == "candidate"})
+    avg = (s.drom_delay_min + s.drom_delay_max) / 2
+    minutes = max(1, round(pages * 2 * avg / 60))
+    return f"Анализ на Дроме бесплатный, займёт примерно {minutes} мин."
 
 
 async def _send_result(m: Message, evals: list, stem: str, caption: str) -> None:
@@ -166,12 +186,14 @@ async def on_choice(cb: CallbackQuery) -> None:
         log.info(text)
 
     try:
-        market = MarketAnalyzer(s)
+        market = DromMarket(s) if s.market_source == "drom" else MarketAnalyzer(s)
         autoteka = AutotekaClient(s)
         try:
             evals = await evaluate_rest(evals, s, market, autoteka, progress)
         finally:
             await autoteka.aclose()
+            if hasattr(market, "aclose"):
+                await market.aclose()
         good = sorted([e for e in evals if e.passed], key=lambda e: e.profit or 0, reverse=True)
         priced = [e for e in evals if e.profit is not None]
         lines = [f"Готово. Оценено на рынке: {len(priced)}, берём <b>{len(good)}</b>."]

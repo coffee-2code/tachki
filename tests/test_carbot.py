@@ -151,7 +151,8 @@ def test_pipeline(tmp_path, s):
     assert wp.max_row == 1 + 6  # все, кто прошёл рынок, включая отсеянных потом
     profits = [wp.cell(r, 10).value for r in range(2, wp.max_row + 1)]
     assert profits == sorted(profits, reverse=True)
-    assert wp.cell(2, 15).value in ("БЕРЁМ", "нет")
+    assert wp.cell(2, 16).value in ("БЕРЁМ", "нет")
+    assert wp.cell(2, 15).hyperlink is not None  # ссылка на объявления
     assert wb["Берём"].max_row == 2 and wb["Отсеяно (легковые)"].max_row == 7
 
 

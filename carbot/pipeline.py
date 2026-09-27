@@ -8,6 +8,7 @@ from typing import Awaitable, Callable, Optional
 from . import pricing
 from .autoteka import AutotekaClient, is_valid_vin
 from .config import Settings
+from .drom import DromBlocked
 from .filters import file_stage_reasons
 from .market import MarketAnalyzer
 from .models import Car, Evaluation
@@ -36,6 +37,7 @@ def stage_file(cars: list[Car], s: Settings) -> list[Evaluation]:
 
 
 def market_groups(evals: list[Evaluation]) -> int:
+    """Сколько разных моделей (марка/модель/год/модификация) уйдёт на анализ рынка."""
     return len({e.car.market_key for e in evals if e.stage == "candidate"})
 
 
@@ -70,23 +72,34 @@ async def evaluate_rest(
     groups: dict[tuple, asyncio.Task] = {}
     done = 0
 
+    blocked: list[str] = []
+
     async def analyze_group(car: Car):
         nonlocal done
         async with sem:
+            if blocked:
+                raise DromBlocked(blocked[0])
             try:
                 return await market.analyze(car)
             finally:
                 done += 1
                 if done % 5 == 0 or done == len(groups):
-                    await say(f"Рынок: {done}/{len(groups)} моделей")
+                    await say(f"Рынок: {done}/{len(groups)}")
 
-    for e in to_market:  # одинаковые марка/модель/год/модификация — один запрос
-        if e.car.market_key not in groups:
-            groups[e.car.market_key] = asyncio.ensure_future(analyze_group(e.car))
+    key = getattr(market, "group_key", None) or (lambda c: c.market_key)
+    for e in to_market:  # одинаковые машины — один запрос
+        if key(e.car) not in groups:
+            groups[key(e.car)] = asyncio.ensure_future(analyze_group(e.car))
 
     async def run_market(e: Evaluation) -> None:
         try:
-            e.market = await groups[e.car.market_key]
+            e.market = await groups[key(e.car)]
+        except DromBlocked as exc:  # капча: не проверенные возвращаем в кандидаты, отчёт всё равно отдаём
+            if not blocked:
+                blocked.append(str(exc))
+            e.stage = "candidate"
+            e.notes.append(f"Рынок не проверен: {blocked[0]}")
+            return
         except Exception as exc:  # noqa: BLE001 — одна машина не должна ронять весь файл
             log.exception("market failed for row %s", e.car.row)
             e.reject(f"Не удалось оценить рынок: {exc}")
@@ -105,6 +118,8 @@ async def evaluate_rest(
             e.stage = "autoteka"
 
     await asyncio.gather(*(run_market(e) for e in to_market))
+    if blocked:
+        await say(f"{blocked[0]} Уже проверенные машины — в отчёте, остальные — на листе «Кандидаты».")
     to_history = [e for e in to_market if e.stage == "autoteka"]
     await say(f"Этап 2 — рынок: перспективных {len(to_history)} из {len(to_market)}.")
 

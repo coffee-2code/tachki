@@ -6,3 +6,5 @@ reports/
 .venv/
 *.xlsx
 out/
+drom_slugs.json
+debug/
