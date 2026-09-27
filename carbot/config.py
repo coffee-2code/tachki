@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -10,32 +11,42 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _s(name: str, default: str = "") -> str:
+    """Значение из .env без хвостового комментария; пусто — значение по умолчанию.
+    «VAR=   # комментарий» python-dotenv отдаёт как «# комментарий» — это тоже считаем пустым."""
+    v = os.getenv(name)
+    if v is None:
+        return default
+    v = re.split(r"(?:^|\s)#", v, maxsplit=1)[0].strip().strip('"').strip("'")
+    return v if v else default
+
+
 def _f(name: str, default: float) -> float:
-    return float(os.getenv(name, default))
+    return float(_s(name, str(default)).replace(",", "."))
 
 
 def _i(name: str, default: int) -> int:
-    return int(os.getenv(name, default))
+    return int(float(_s(name, str(default)).replace(" ", "")))
 
 
 def _b(name: str, default: bool) -> bool:
-    return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "да")
+    return _s(name, str(default)).lower() in ("1", "true", "yes", "да")
 
 
 def _list(name: str) -> list[str]:
-    return [x.strip().lower() for x in os.getenv(name, "").split(",") if x.strip()]
+    return [x.strip().lower() for x in _s(name).split(",") if x.strip()]
 
 
 @dataclass
 class Settings:
     # --- доступы ---
-    telegram_token: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
+    telegram_token: str = field(default_factory=lambda: _s("TELEGRAM_BOT_TOKEN", ""))
     allowed_user_ids: list[int] = field(
-        default_factory=lambda: [int(x) for x in os.getenv("ALLOWED_USER_IDS", "").split(",") if x.strip()]
+        default_factory=lambda: [int(x) for x in re.findall(r"\d+", _s("ALLOWED_USER_IDS"))]
     )
-    anthropic_model: str = field(default_factory=lambda: os.getenv("ANTHROPIC_MODEL", "claude-opus-5"))
-    autoteka_client_id: str = field(default_factory=lambda: os.getenv("AUTOTEKA_CLIENT_ID", ""))
-    autoteka_client_secret: str = field(default_factory=lambda: os.getenv("AUTOTEKA_CLIENT_SECRET", ""))
+    anthropic_model: str = field(default_factory=lambda: _s("ANTHROPIC_MODEL", "claude-opus-5"))
+    autoteka_client_id: str = field(default_factory=lambda: _s("AUTOTEKA_CLIENT_ID", ""))
+    autoteka_client_secret: str = field(default_factory=lambda: _s("AUTOTEKA_CLIENT_SECRET", ""))
 
     # --- цена закупки ---
     seller_discount: float = field(default_factory=lambda: _f("SELLER_DISCOUNT", 0.15))   # п.1: минус 15 %
@@ -62,11 +73,13 @@ class Settings:
 
     # --- этап 2: рынок ---
     # free — бесплатно, бот сам собирает цены с площадок MARKET_SOURCES; claude — платно, Claude с веб-поиском
-    market_source: str = field(default_factory=lambda: os.getenv("MARKET_SOURCE", "free").strip().lower())
+    market_source: str = field(default_factory=lambda: _s("MARKET_SOURCE", "free").strip().lower())
     market_sources: list[str] = field(default_factory=lambda: _list("MARKET_SOURCES") or ["drom", "autoru", "avito"])
     sources_required: int = field(default_factory=lambda: _i("SOURCES_REQUIRED", 0))  # 0 — все из MARKET_SOURCES
     browser_headless: bool = field(default_factory=lambda: _b("BROWSER_HEADLESS", False))  # окно видно — капчу решаете вы
-    browser_channel: str = field(default_factory=lambda: os.getenv("BROWSER_CHANNEL", "chrome"))  # ваш Chrome
+    # chrome — ваш установленный Chrome; chromium — встроенный браузер
+    browser_channel: str = field(default_factory=lambda: "" if _s("BROWSER_CHANNEL", "chrome").lower() == "chromium"
+                                 else _s("BROWSER_CHANNEL", "chrome"))
     browser_delay_min: float = field(default_factory=lambda: _f("BROWSER_DELAY_MIN", 2.0))
     browser_delay_max: float = field(default_factory=lambda: _f("BROWSER_DELAY_MAX", 5.0))
     captcha_wait_sec: int = field(default_factory=lambda: _i("CAPTCHA_WAIT_SEC", 180))

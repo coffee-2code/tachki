@@ -24,6 +24,9 @@ from .listings import (MODEL_NOISE, TRANSLIT, Listing, SiteUnavailable, SourceRe
 from .models import Car, MarketReport
 
 log = logging.getLogger(__name__)
+# для тестов и старых импортов
+__all__ = ["DromMarket", "DromBlocked", "parse_listings", "parse_mileage", "parse_total", "pick_slug",
+           "liquidity_from_count", "norm", "MODEL_NOISE"]
 
 BASE = "https://auto.drom.ru"
 SLUGS_FILE = Path("drom_slugs.json")

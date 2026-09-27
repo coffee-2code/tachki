@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 
 import pytest
 from openpyxl import Workbook, load_workbook
@@ -9,7 +8,7 @@ from carbot.autoteka import detect_rollback
 from carbot.config import Settings
 from carbot.excel_io import parse_vat, read_cars, split_title, write_result
 from carbot.filters import file_stage_reasons
-from carbot.models import Car, HistoryReport, MarketReport
+from carbot.models import Car, HistoryReport
 from carbot.pipeline import evaluate
 
 
@@ -106,7 +105,6 @@ def mr(median, liq=8, n=20):
 
 
 def test_pipeline(tmp_path, s):
-    y = s.current_year
     cars = [
         car(row=2, vin="AAAAAAAAAAAAAAAA1", price=2_000_000),                  # хорошая
         car(row=3, vin="AAAAAAAAAAAAAAAA2", year=2009),                        # старая
@@ -220,3 +218,16 @@ def test_plural():
     from carbot.report import plural
     assert [plural(n, "машина", "машины", "машин") for n in (1, 2, 5, 11, 21, 33, 112)] == [
         "1 машина", "2 машины", "5 машин", "11 машин", "21 машина", "33 машины", "112 машин"]
+
+
+def test_env_inline_comments(monkeypatch):
+    """«VAR=   # комментарий» из старого .env не должен ломать запуск."""
+    monkeypatch.setenv("ALLOWED_USER_IDS", "# ваш Telegram id (бот скажет его на /start); несколько — через запятую")
+    monkeypatch.setenv("MIN_PROFIT_RUB", "400000   # прибыль")
+    monkeypatch.setenv("MARKET_SOURCE", "# free — бесплатно")
+    monkeypatch.setenv("BROWSER_CHANNEL", "chromium")
+    st = Settings()
+    assert st.allowed_user_ids == [] and st.min_profit_rub == 400_000
+    assert st.market_source == "free" and st.browser_channel == ""
+    monkeypatch.setenv("ALLOWED_USER_IDS", "123, 456")
+    assert Settings().allowed_user_ids == [123, 456]

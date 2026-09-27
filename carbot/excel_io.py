@@ -153,3 +153,5 @@ def read_cars(path: str | Path, s: Settings) -> list[Car]:
 
 # Итоговый отчёт живёт в report.py; реэкспорт для старых импортов
 from .report import is_not_passenger, write_result  # noqa: E402,F401
+
+__all__ = ["read_cars", "write_result", "is_not_passenger", "parse_vat", "split_title"]
