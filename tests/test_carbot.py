@@ -146,8 +146,8 @@ def test_pipeline(tmp_path, s):
     out = tmp_path / "out.xlsx"
     write_result(evals, out, s)
     wb = load_workbook(out)
-    assert wb.sheetnames == ["Берём", "Отсеяно", "Условия"]
-    assert wb["Берём"].max_row == 2 and wb["Отсеяно"].max_row == 7
+    assert wb.sheetnames == ["Берём", "Отсеяно (легковые)", "Условия"]
+    assert wb["Берём"].max_row == 2 and wb["Отсеяно (легковые)"].max_row == 7
 
 
 def test_leasing_registry_filters(s):
@@ -179,3 +179,14 @@ def test_registry_columns(tmp_path, s):
     assert (c.brand, c.model, c.year, c.mileage, c.price) == ("Chery", "Tiggo 8 Pro Max", 2023, 74308, 2_500_000)
     assert c.get("код предложения") == "014782" and c.get("тип тс") == "ЛЕГКОВОЙ"
     assert c.market_key == ("chery", "tiggo 8 pro max", 2023, "ultimate 4wd")
+
+
+def test_report_only_passenger_cars(tmp_path, s):
+    from carbot.pipeline import stage_file
+    cars = [car(row=2, extra={"Тип ТС": "ЛЕГКОВОЙ"}), car(row=3, extra={"Тип ТС": "ГРУЗОВОЙ"}),
+            car(row=4, year=2015, extra={"Тип ТС": "ЛЕГКОВОЙ"})]
+    out = tmp_path / "c.xlsx"
+    write_result(stage_file(cars, s), out, s)
+    wb = load_workbook(out)
+    assert wb.sheetnames == ["Кандидаты", "Отсеяно (легковые)", "Условия"]  # рынок не запускали — «Берём» нет
+    assert wb["Кандидаты"].max_row == 2 and wb["Отсеяно (легковые)"].max_row == 2  # грузовика нет нигде

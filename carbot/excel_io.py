@@ -184,6 +184,10 @@ def _write_table(ws, headers: list[str], rows: list[list], widths: list[int], fi
     ws.auto_filter.ref = ws.dimensions
 
 
+def is_not_passenger(e: Evaluation) -> bool:
+    return e.stage == "file" and bool(e.reasons) and e.reasons[0].startswith("Не легковой")
+
+
 def _lot(c: Car) -> list[str]:
     return [c.get("код предложения", "код лота", "лот", "код"), c.get("модификация"),
             c.get("федеральный округ", "регион", "город"), c.get("состояние"),
@@ -196,27 +200,31 @@ def _r(x):
 
 def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None:
     wb = Workbook()
+    wb.remove(wb.active)
+    total = len(evals)
+    evals = [e for e in evals if not is_not_passenger(e)]  # грузовики, прицепы, спецтехника в отчёт не идут
+    market_ran = any(e.stage not in ("file", "candidate") for e in evals)
 
     good = sorted([e for e in evals if e.passed], key=lambda e: e.profit or 0, reverse=True)
-    ws = wb.active
-    ws.title = "Берём"
-    _write_table(
-        ws,
-        ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "−15 %", "Платим (нал)",
-         "Медиана рынка", "Продадим за", "Прибыль", "Ликвидность /10", "Продажа, дней",
-         "Владельцев", "ДТП", "Код лота", "Модификация", "Регион", "Состояние", "Ключи", "Фото",
-         "Заметки", "Спрос и отзывы", "Болячки", "Источники"],
-        [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.purchase_price),
-          _r(e.cash_price), e.market.median_price if e.market else None, _r(e.expected_sale), _r(e.profit),
-          e.market.liquidity if e.market else None, e.market.days_to_sell if e.market else None,
-          e.history.owners if e.history else "не проверено",
-          e.history.accidents if e.history else "не проверено",
-          *_lot(e.car), "\n".join(e.notes),
-          e.market.demand_notes if e.market else "", e.market.known_issues if e.market else "",
-          "\n".join(e.market.sources[:5]) if e.market else ""] for e in good],
-        [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 10, 10, 10, 8, 10, 22, 14, 18, 14, 30, 35, 45, 40, 45],
-        GOOD_FILL,
-    )
+    if market_ran:
+        ws = wb.create_sheet("Берём")
+        _write_table(
+            ws,
+            ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "−15 %", "Платим (нал)",
+             "Медиана рынка", "Продадим за", "Прибыль", "Ликвидность /10", "Продажа, дней",
+             "Владельцев", "ДТП", "Код лота", "Модификация", "Регион", "Состояние", "Ключи", "Фото",
+             "Заметки", "Спрос и отзывы", "Болячки", "Источники"],
+            [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.purchase_price),
+              _r(e.cash_price), e.market.median_price if e.market else None, _r(e.expected_sale), _r(e.profit),
+              e.market.liquidity if e.market else None, e.market.days_to_sell if e.market else None,
+              e.history.owners if e.history else "не проверено",
+              e.history.accidents if e.history else "не проверено",
+              *_lot(e.car), "\n".join(e.notes),
+              e.market.demand_notes if e.market else "", e.market.known_issues if e.market else "",
+              "\n".join(e.market.sources[:5]) if e.market else ""] for e in good],
+            [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 10, 10, 10, 8, 10, 22, 14, 18, 14, 30, 35, 45, 40, 45],
+            GOOD_FILL,
+        )
 
     cands = [e for e in evals if e.stage == "candidate"]  # прошли бесплатный отсев, рынок не проверялся
     if cands:
@@ -232,7 +240,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
         )
 
     bad = [e for e in evals if not e.passed and e.stage != "candidate"]
-    ws2 = wb.create_sheet("Отсеяно")
+    ws2 = wb.create_sheet("Отсеяно (легковые)")
     _write_table(
         ws2,
         ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "Платим (нал)", "Этап", "Почему",
@@ -261,7 +269,9 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
         ["Стоп-слова в комментариях", ", ".join(s.bad_words)],
         ["Макс. владельцев", s.max_owners],
         ["Макс. ДТП", s.max_accidents],
-        ["Всего в файле", len(evals)],
+        ["Всего строк с ценой в файле", total],
+        ["Из них легковых", len(evals)],
+        ["Прошли бесплатный отсев", sum(e.stage != "file" for e in evals)],
         ["Берём", len(good)],
     ]
     _write_table(ws3, ["Параметр", "Значение"], rows, [40, 60])

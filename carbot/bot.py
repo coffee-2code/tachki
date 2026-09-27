@@ -14,7 +14,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Inli
 
 from .autoteka import AutotekaClient
 from .config import settings as s
-from .excel_io import read_cars, write_result
+from .excel_io import is_not_passenger, read_cars, write_result
 from .market import MarketAnalyzer
 from .pipeline import evaluate_rest, market_groups, stage_file
 
@@ -104,10 +104,12 @@ async def on_document(m: Message, bot: Bot) -> None:
     groups = market_groups(evals)
     _pending[uid] = (evals, Path(doc.file_name).stem)
 
-    top = Counter(e.reasons[0].split(":")[0] for e in evals if e.stage == "file" and e.reasons).most_common(6)
+    passenger = [e for e in evals if not is_not_passenger(e)]
+    top = Counter(e.reasons[0].split(":")[0] for e in passenger if e.stage == "file" and e.reasons).most_common(6)
     lines = [
-        f"Строк с ценой: <b>{len(cars)}</b>.",
-        f"Отсеяно на этапе 1: <b>{len(evals) - len(to_market)}</b>",
+        f"Строк с ценой: {len(cars)}, из них легковых: <b>{len(passenger)}</b> "
+        "(грузовики, прицепы и спецтехника не разбираются).",
+        f"Легковых отсеяно бесплатно: <b>{len(passenger) - len(to_market)}</b>",
         *[f"  • {html.escape(k)}: {n}" for k, n in top],
         "",
         f"Кандидатов: <b>{len(to_market)}</b> — это <b>{groups}</b> разных моделей для анализа рынка.",
