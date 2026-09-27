@@ -146,14 +146,16 @@ def test_pipeline(tmp_path, s):
     out = tmp_path / "out.xlsx"
     write_result(evals, out, s)
     wb = load_workbook(out)
-    assert wb.sheetnames == ["Берём", "Прибыль по всем", "Отсеяно (легковые)", "Условия"]
+    assert wb.sheetnames == ["Сводка", "Берём", "Прибыль по всем", "Отсеяно"]
     wp = wb["Прибыль по всем"]
-    assert wp.max_row == 1 + 6  # все, кто прошёл рынок, включая отсеянных потом
-    profits = [wp.cell(r, 10).value for r in range(2, wp.max_row + 1)]
+    head = [c.value for c in wp[3]]
+    assert wp.max_row == 3 + 6  # все, кто прошёл рынок, включая отсеянных потом
+    profits = [wp.cell(r, head.index("Прибыль") + 1).value for r in range(4, wp.max_row + 1)]
     assert profits == sorted(profits, reverse=True)
-    assert wp.cell(2, 16).value in ("БЕРЁМ", "нет")
-    assert wp.cell(2, 15).hyperlink is not None  # ссылка на объявления
-    assert wb["Берём"].max_row == 2 and wb["Отсеяно (легковые)"].max_row == 7
+    assert wp.cell(4, head.index("Итог") + 1).value == "БЕРЁМ"
+    assert wp.cell(4, head.index("Дром") + 1).hyperlink is not None  # ссылка на объявления
+    assert wb["Берём"].max_row == 4 and wb["Отсеяно"].max_row == 3 + 6
+
 
 
 def test_leasing_registry_filters(s):
@@ -201,5 +203,11 @@ def test_report_only_passenger_cars(tmp_path, s):
     out = tmp_path / "c.xlsx"
     write_result(stage_file(cars, s), out, s)
     wb = load_workbook(out)
-    assert wb.sheetnames == ["Кандидаты", "Отсеяно (легковые)", "Условия"]  # рынок не запускали — «Берём» нет
-    assert wb["Кандидаты"].max_row == 2 and wb["Отсеяно (легковые)"].max_row == 2  # грузовика нет нигде
+    assert wb.sheetnames == ["Сводка", "Кандидаты", "Отсеяно"]  # рынок не запускали — «Берём» нет
+    assert wb["Кандидаты"].max_row == 4 and wb["Отсеяно"].max_row == 4  # грузовика нет нигде
+
+
+def test_plural():
+    from carbot.report import plural
+    assert [plural(n, "машина", "машины", "машин") for n in (1, 2, 5, 11, 21, 33, 112)] == [
+        "1 машина", "2 машины", "5 машин", "11 машин", "21 машина", "33 машины", "112 машин"]

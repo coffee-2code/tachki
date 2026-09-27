@@ -39,7 +39,7 @@ async def run(path: Path, only_list: bool) -> Path:
                 await market.aclose()
 
     out = path.with_name(f"Оценка_{path.stem}.xlsx")
-    write_result(evals, out, s)
+    write_result(evals, out, s, path.name)
     good = sorted([e for e in evals if e.passed], key=lambda e: e.profit or 0, reverse=True)
     print(f"\nБерём: {len(good)}")
     for e in good[:15]:

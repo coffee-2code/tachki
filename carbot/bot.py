@@ -112,7 +112,7 @@ async def on_document(m: Message, bot: Bot) -> None:
     evals = stage_file(cars, s)
     to_market = [e for e in evals if e.stage == "candidate"]
     groups = market_groups(evals)
-    _pending[uid] = (evals, Path(doc.file_name).stem)
+    _pending[uid] = (evals, doc.file_name)
 
     passenger = [e for e in evals if not is_not_passenger(e)]
     top = Counter(e.reasons[0].split(":")[0] for e in passenger if e.stage == "file" and e.reasons).most_common(6)
@@ -147,8 +147,8 @@ def _cost_line(evals: list, groups: int) -> str:
 
 async def _send_result(m: Message, evals: list, stem: str, caption: str) -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / f"Оценка_{stem}.xlsx"
-        await asyncio.to_thread(write_result, evals, out, s)
+        out = Path(tmp) / f"Оценка_{Path(stem).stem}.xlsx"
+        await asyncio.to_thread(write_result, evals, out, s, stem)
         await m.answer_document(FSInputFile(out), caption=caption[:1000])
 
 

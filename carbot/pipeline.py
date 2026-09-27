@@ -110,10 +110,9 @@ async def evaluate_rest(
         if m.listings_found == 0:
             e.reject("На площадках не нашлось похожих объявлений — оценить нельзя")
         if m.liquidity < s.min_liquidity:
-            e.reject(f"Неликвид: {m.liquidity}/10, продажа ~{m.days_to_sell} дн. {m.demand_notes[:200]}")
+            e.reject(f"Неликвид: {m.liquidity}/10, продажа ~{m.days_to_sell} дн.")
         if e.profit < s.min_profit_rub:
-            e.reject(f"Мало прибыли: {_fmt(e.profit)} ₽ (платим {_fmt(e.cash_price)}, "
-                     f"продадим ~{_fmt(e.expected_sale)})")
+            e.reject(f"Мало прибыли: {_fmt(e.profit)} ₽ при пороге {_fmt(s.min_profit_rub)} ₽")
         if not e.reasons:
             e.stage = "autoteka"
 
