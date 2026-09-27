@@ -46,6 +46,7 @@ class Settings:
     min_year: int = field(default_factory=lambda: _i("MIN_YEAR", 2018))          # 0 — считать по MAX_AGE_YEARS
     max_age_years: int = field(default_factory=lambda: _i("MAX_AGE_YEARS", 8))
     max_mileage_km: int = field(default_factory=lambda: _i("MAX_MILEAGE_KM", 100_000))
+    min_mileage_km: int = field(default_factory=lambda: _i("MIN_MILEAGE_KM", 2))  # 0–1 км или пусто — не заводится
     max_km_per_year: int = field(default_factory=lambda: _i("MAX_KM_PER_YEAR", 30_000))
     blacklist: list[str] = field(default_factory=lambda: _list("BLACKLIST"))  # "марка" или "марка модель"
     # Колонки реестра лизинговой компании (если их нет в файле — проверка пропускается)

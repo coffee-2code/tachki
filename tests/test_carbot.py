@@ -184,6 +184,9 @@ def test_leasing_registry_filters(s):
     crashed = car(extra={"Тип ТС": "ЛЕГКОВОЙ", "Комментарии по ключам": "На ходу, после ДТП, замята крыша"})
     assert "после дтп" in file_stage_reasons(crashed, s)[0]
     assert "Старая" in file_stage_reasons(car(year=2017), s)[0]
+    for km in (0, 1, None):
+        assert file_stage_reasons(car(mileage=km), s) == [f"Пробег {km or 0} км — не смогли запустить"]
+    assert file_stage_reasons(car(mileage=2), s) == []
 
 
 def test_registry_columns(tmp_path, s):

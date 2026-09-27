@@ -31,8 +31,6 @@ def stage_file(cars: list[Car], s: Settings) -> list[Evaluation]:
         reasons = file_stage_reasons(car, s)
         e.stage = "file" if reasons else "candidate"
         e.reasons = reasons
-        if not reasons and not car.mileage:
-            e.notes.append("Пробег в файле не указан — смотреть по Автотеке")
         evals.append(e)
     return evals
 

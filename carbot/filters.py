@@ -61,7 +61,9 @@ def file_stage_reasons(car: Car, s: Settings) -> list[str]:
     else:
         reasons.append("Не указан год выпуска")
 
-    if car.mileage:  # 0 или пусто — пробег неизвестен, его покажет Автотека
+    if car.mileage is None or car.mileage < s.min_mileage_km:
+        reasons.append(f"Пробег {car.mileage or 0} км — не смогли запустить")
+    elif car.mileage:
         if car.mileage > s.max_mileage_km:
             reasons.append(f"Большой пробег: {_n(car.mileage)} км (максимум {_n(s.max_mileage_km)})")
         elif car.year:

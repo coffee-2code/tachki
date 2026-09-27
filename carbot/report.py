@@ -336,7 +336,8 @@ def _summary(ws: Worksheet, evals: list[Evaluation], total_rows: int, source_nam
         ("Лоты", f"тип: {', '.join(s.vehicle_types)}; статус: {', '.join(s.allow_statuses)}"
                  + ("; без правого руля" if s.skip_rhd else "") + ("; с ключами" if s.skip_no_keys else "")),
         ("Состояние", "не " + ", ".join(s.bad_conditions) + "; в комментариях нет: " + ", ".join(s.bad_words)),
-        ("Год и пробег", f"от {s.min_year or s.current_year - s.max_age_years} г.; до {s.max_mileage_km:,} км; "
+        ("Год и пробег", f"от {s.min_year or s.current_year - s.max_age_years} г.; от {s.min_mileage_km} "
+                         f"до {s.max_mileage_km:,} км (0–1 км — не заводится); "
                          f"до {s.max_km_per_year:,} км/год".replace(",", " ")),
         ("Пороги", f"ликвидность от {s.min_liquidity}/10; прибыль от {s.min_profit_rub:,} ₽".replace(",", " ")),
         ("Автотека", f"владельцев до {s.max_owners}; ДТП до {s.max_accidents}; без скрутки"),
