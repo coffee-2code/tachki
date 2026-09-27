@@ -9,6 +9,14 @@ def _n(x: float) -> str:
     return f"{x:,.0f}".replace(",", " ")
 
 
+RHD_MARKERS = ("правый руль", "праворул", "rhd", "right hand")
+
+
+def is_rhd(car: Car) -> bool:
+    text = " ".join([car.model, car.get("модификация"), car.get("руль"), car.comments()]).lower()
+    return any(m in text for m in RHD_MARKERS) or car.get("руль").lower().startswith("прав")
+
+
 def file_stage_reasons(car: Car, s: Settings) -> list[str]:
     reasons: list[str] = []
 
@@ -17,8 +25,10 @@ def file_stage_reasons(car: Car, s: Settings) -> list[str]:
     if vtype and not any(t in vtype for t in s.vehicle_types):
         return [f"Не легковой: {vtype}"]  # грузовики, прицепы, спецтехнику дальше не разбираем
     status = car.get("статус изт", "статус лота", "статус продажи").lower()
-    if status and any(st in status for st in s.skip_statuses):
-        reasons.append(f"Уже занята: статус «{status}»")
+    if status and not any(st == status for st in s.allow_statuses):
+        reasons.append(f"Не в продаже: статус «{car.get('статус изт', 'статус лота', 'статус продажи')}»")
+    if s.skip_rhd and is_rhd(car):
+        reasons.append("Правый руль")
     cond = car.get("состояние").lower()
     if cond and any(b in cond for b in s.bad_conditions):
         reasons.append(f"Состояние: {car.get('состояние')}")

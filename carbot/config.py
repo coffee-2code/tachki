@@ -50,7 +50,8 @@ class Settings:
     blacklist: list[str] = field(default_factory=lambda: _list("BLACKLIST"))  # "марка" или "марка модель"
     # Колонки реестра лизинговой компании (если их нет в файле — проверка пропускается)
     vehicle_types: list[str] = field(default_factory=lambda: _list("VEHICLE_TYPES") or ["легковой"])
-    skip_statuses: list[str] = field(default_factory=lambda: _list("SKIP_STATUSES") or ["резерв", "отгрузка"])
+    allow_statuses: list[str] = field(default_factory=lambda: _list("ALLOW_STATUSES") or ["в продаже"])
+    skip_rhd: bool = field(default_factory=lambda: _b("SKIP_RHD", True))  # правый руль не рассматриваем
     bad_conditions: list[str] = field(default_factory=lambda: _list("BAD_CONDITIONS") or ["hard", "удовлетвор"])
     bad_words: list[str] = field(default_factory=lambda: _list("BAD_WORDS") or [
         "тотал", "сгор", "погорел", "утоп", "перевертыш", "перевёртыш", "не на ходу", "хлам",
