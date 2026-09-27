@@ -21,8 +21,37 @@ def _fmt(x: float) -> str:
     return f"{x:,.0f}".replace(",", " ")
 
 
+def stage_file(cars: list[Car], s: Settings) -> list[Evaluation]:
+    """Этап 1 — бесплатный. Возвращает оценки всех машин; прошедшие имеют stage == "candidate"."""
+    evals = []
+    for car in cars:
+        e = Evaluation(car=car, purchase_price=pricing.purchase_price(car, s), cash_price=pricing.cash_price(car, s))
+        reasons = file_stage_reasons(car, s)
+        e.stage = "file" if reasons else "candidate"
+        e.reasons = reasons
+        if not reasons and not car.mileage:
+            e.notes.append("Пробег в файле не указан — смотреть по Автотеке")
+        evals.append(e)
+    return evals
+
+
+def market_groups(evals: list[Evaluation]) -> int:
+    return len({e.car.market_key for e in evals if e.stage == "candidate"})
+
+
 async def evaluate(
     cars: list[Car],
+    s: Settings,
+    market: MarketAnalyzer,
+    autoteka: Optional[AutotekaClient],
+    progress: Optional[Progress] = None,
+) -> list[Evaluation]:
+    evals = stage_file(cars, s)
+    return await evaluate_rest(evals, s, market, autoteka, progress)
+
+
+async def evaluate_rest(
+    evals: list[Evaluation],
     s: Settings,
     market: MarketAnalyzer,
     autoteka: Optional[AutotekaClient],
@@ -32,38 +61,36 @@ async def evaluate(
         if progress:
             await progress(msg)
 
-    # ---- этап 1: файл
-    evals = []
-    for car in cars:
-        e = Evaluation(car=car, purchase_price=pricing.purchase_price(car, s), cash_price=pricing.cash_price(car, s))
-        reasons = file_stage_reasons(car, s)
-        if reasons:
-            e.stage = "file"
-            e.reasons = reasons
-        else:
-            e.stage = "market"
-        evals.append(e)
-    to_market = [e for e in evals if e.stage == "market"]
-    await say(f"Этап 1 — файл: {len(cars)} машин, отсеяно {len(cars) - len(to_market)} "
-              f"(старые, большой пробег, чёрный список). На анализ рынка: {len(to_market)}.")
+    to_market = [e for e in evals if e.stage == "candidate"]
+    for e in to_market:
+        e.stage = "market"
 
     # ---- этап 2: рынок
     sem = asyncio.Semaphore(s.market_concurrency)
+    groups: dict[tuple, asyncio.Task] = {}
     done = 0
 
-    async def run_market(e: Evaluation) -> None:
+    async def analyze_group(car: Car):
         nonlocal done
         async with sem:
             try:
-                e.market = await market.analyze(e.car)
-            except Exception as exc:  # noqa: BLE001 — одна машина не должна ронять весь файл
-                log.exception("market failed for row %s", e.car.row)
-                e.reject(f"Не удалось оценить рынок: {exc}")
-                return
+                return await market.analyze(car)
             finally:
                 done += 1
-                if done % 5 == 0 or done == len(to_market):
-                    await say(f"Рынок: {done}/{len(to_market)}")
+                if done % 5 == 0 or done == len(groups):
+                    await say(f"Рынок: {done}/{len(groups)} моделей")
+
+    for e in to_market:  # одинаковые марка/модель/год/модификация — один запрос
+        if e.car.market_key not in groups:
+            groups[e.car.market_key] = asyncio.ensure_future(analyze_group(e.car))
+
+    async def run_market(e: Evaluation) -> None:
+        try:
+            e.market = await groups[e.car.market_key]
+        except Exception as exc:  # noqa: BLE001 — одна машина не должна ронять весь файл
+            log.exception("market failed for row %s", e.car.row)
+            e.reject(f"Не удалось оценить рынок: {exc}")
+            return
         m = e.market
         e.expected_sale = pricing.expected_sale(m, s)
         e.profit = pricing.profit(e.car, m, s)
@@ -86,7 +113,7 @@ async def evaluate(
         for e in to_history:
             e.passed = True
             e.stage = "ok"
-            e.reasons.append("Автотека не подключена — пробейте VIN вручную перед покупкой")
+            e.notes.append("Автотека не подключена — пробейте VIN вручную перед покупкой")
         if to_history:
             await say("Автотека не подключена: перспективные отмечены как «проверить вручную».")
         return evals
@@ -118,8 +145,8 @@ async def evaluate(
             e.reject("Юридические/эксплуатационные риски: " + "; ".join(hard))
         soft = [f for f in h.other_flags if f not in hard]
         if soft:
-            e.reasons.append("Обратить внимание: " + "; ".join(soft))
-        if not any(r for r in e.reasons if not r.startswith("Обратить внимание")):
+            e.notes.append("Обратить внимание: " + "; ".join(soft))
+        if not e.reasons:
             e.passed = True
             e.stage = "ok"
 

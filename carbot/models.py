@@ -22,6 +22,22 @@ class Car:
     def title(self) -> str:
         return f"{self.brand} {self.model} {self.year or ''}".strip()
 
+    def get(self, *keys: str) -> str:
+        """Значение прочей колонки по началу/вхождению названия: car.get("статус изт", "статус")."""
+        for k in keys:
+            for h, v in self.extra.items():
+                if k in str(h).lower().strip():
+                    return "" if v is None else str(v).strip()
+        return ""
+
+    def comments(self) -> str:
+        return " ".join(str(v) for h, v in self.extra.items() if "коммент" in str(h).lower() and v)
+
+    @property
+    def market_key(self) -> tuple:
+        """Одинаковые машины оцениваем на рынке один раз."""
+        return (self.brand.lower(), self.model.lower(), self.year, self.get("модификация").lower())
+
 
 class MarketReport(BaseModel):
     """То, что Claude возвращает после поиска по Авито/Авто.ру/Дрому и форумам."""
@@ -55,7 +71,8 @@ class Evaluation:
     cash_price: float = 0.0          # реально платим
     stage: str = "file"              # file | market | autoteka | ok
     passed: bool = False
-    reasons: list[str] = field(default_factory=list)
+    reasons: list[str] = field(default_factory=list)   # почему отсеяна
+    notes: list[str] = field(default_factory=list)     # на что обратить внимание (не отсев)
     market: Optional[MarketReport] = None
     history: Optional[HistoryReport] = None
     expected_sale: Optional[float] = None

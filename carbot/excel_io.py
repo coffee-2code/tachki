@@ -16,10 +16,10 @@ from .models import Car, Evaluation
 ALIASES = {
     "brand": ["марка", "бренд", "производитель", "make", "brand"],
     "model": ["модель", "model"],
-    "title": ["наименование", "автомобиль", "название", "авто", "тс", "транспортное средство", "car", "name"],
+    "title": ["наименование", "автомобиль", "название", "транспортное средство", "car", "name"],
     "year": ["год выпуска", "год", "year"],
     "mileage": ["пробег", "mileage", "км"],
-    "price": ["цена", "стоимость", "price", "сумма"],
+    "price": ["цена", "стоимость", "срс", "price", "сумма"],
     "vin": ["vin", "вин", "идентификационный"],
     "vat": ["ндс", "vat", "налог"],
 }
@@ -184,6 +184,12 @@ def _write_table(ws, headers: list[str], rows: list[list], widths: list[int], fi
     ws.auto_filter.ref = ws.dimensions
 
 
+def _lot(c: Car) -> list[str]:
+    return [c.get("код предложения", "код лота", "лот", "код"), c.get("модификация"),
+            c.get("федеральный округ", "регион", "город"), c.get("состояние"),
+            c.get("количество ключей", "ключ"), c.get("фото")]
+
+
 def _r(x):
     return round(x) if isinstance(x, (int, float)) else x
 
@@ -198,26 +204,43 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
         ws,
         ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "−15 %", "Платим (нал)",
          "Медиана рынка", "Продадим за", "Прибыль", "Ликвидность /10", "Продажа, дней",
-         "Владельцев", "ДТП", "Спрос и отзывы", "Болячки", "Источники"],
+         "Владельцев", "ДТП", "Код лота", "Модификация", "Регион", "Состояние", "Ключи", "Фото",
+         "Заметки", "Спрос и отзывы", "Болячки", "Источники"],
         [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.purchase_price),
           _r(e.cash_price), e.market.median_price if e.market else None, _r(e.expected_sale), _r(e.profit),
           e.market.liquidity if e.market else None, e.market.days_to_sell if e.market else None,
           e.history.owners if e.history else "не проверено",
           e.history.accidents if e.history else "не проверено",
+          *_lot(e.car), "\n".join(e.notes),
           e.market.demand_notes if e.market else "", e.market.known_issues if e.market else "",
           "\n".join(e.market.sources[:5]) if e.market else ""] for e in good],
-        [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 10, 10, 10, 8, 45, 40, 45],
+        [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 10, 10, 10, 8, 10, 22, 14, 18, 14, 30, 35, 45, 40, 45],
         GOOD_FILL,
     )
 
-    bad = [e for e in evals if not e.passed]
+    cands = [e for e in evals if e.stage == "candidate"]  # прошли бесплатный отсев, рынок не проверялся
+    if cands:
+        wsc = wb.create_sheet("Кандидаты")
+        _write_table(
+            wsc,
+            ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "−15 %", "Платим (нал)",
+             "Код лота", "Модификация", "Регион", "Состояние", "Ключи", "Фото", "Заметки"],
+            [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.purchase_price),
+              _r(e.cash_price), *_lot(e.car), "\n".join(e.notes)]
+             for e in sorted(cands, key=lambda e: (e.car.brand.lower(), e.car.model.lower()))],
+            [6, 28, 20, 7, 11, 13, 13, 13, 10, 22, 14, 18, 14, 30, 35],
+        )
+
+    bad = [e for e in evals if not e.passed and e.stage != "candidate"]
     ws2 = wb.create_sheet("Отсеяно")
     _write_table(
         ws2,
-        ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "Платим (нал)", "Этап", "Почему", "Прибыль"],
+        ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "Платим (нал)", "Этап", "Почему",
+         "Прибыль", "Код лота", "Тип ТС"],
         [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.cash_price),
-          STAGE_NAMES.get(e.stage, e.stage), "\n".join(e.reasons), _r(e.profit)] for e in bad],
-        [6, 28, 20, 7, 11, 13, 13, 12, 60, 12],
+          STAGE_NAMES.get(e.stage, e.stage), "\n".join(e.reasons), _r(e.profit), e.car.get("код"),
+          e.car.get("тип тс")] for e in bad],
+        [6, 28, 20, 7, 11, 13, 13, 12, 60, 12, 10, 14],
         BAD_FILL,
     )
 
@@ -225,17 +248,21 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
     rows = [
         ["Скидка продавца", f"{s.seller_discount:.0%}"],
         ["Коэффициент «за наличку» (полный НДС)", s.cash_factor],
-        ["Макс. возраст, лет", s.max_age_years],
         ["Макс. пробег, км", s.max_mileage_km],
         ["Макс. км в год", s.max_km_per_year],
         ["Мин. ликвидность /10", s.min_liquidity],
         ["Торг при продаже", f"{s.sale_discount:.0%}"],
         ["Подготовка и оформление, ₽", s.prep_cost_rub],
         ["Мин. прибыль, ₽", s.min_profit_rub],
+        ["Год выпуска от", s.min_year or f"не старше {s.max_age_years} лет"],
+        ["Тип ТС", ", ".join(s.vehicle_types)],
+        ["Пропускаем статусы", ", ".join(s.skip_statuses)],
+        ["Плохое состояние", ", ".join(s.bad_conditions)],
+        ["Стоп-слова в комментариях", ", ".join(s.bad_words)],
         ["Макс. владельцев", s.max_owners],
         ["Макс. ДТП", s.max_accidents],
         ["Всего в файле", len(evals)],
         ["Берём", len(good)],
     ]
-    _write_table(ws3, ["Параметр", "Значение"], rows, [40, 16])
+    _write_table(ws3, ["Параметр", "Значение"], rows, [40, 60])
     wb.save(path)

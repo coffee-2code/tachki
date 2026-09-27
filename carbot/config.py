@@ -43,17 +43,27 @@ class Settings:
     default_full_vat: bool = field(default_factory=lambda: _b("DEFAULT_FULL_VAT", True))  # если в файле нет колонки НДС
 
     # --- этап 1: фильтры по самому файлу (бесплатно) ---
+    min_year: int = field(default_factory=lambda: _i("MIN_YEAR", 2018))          # 0 — считать по MAX_AGE_YEARS
     max_age_years: int = field(default_factory=lambda: _i("MAX_AGE_YEARS", 8))
-    max_mileage_km: int = field(default_factory=lambda: _i("MAX_MILEAGE_KM", 150_000))
+    max_mileage_km: int = field(default_factory=lambda: _i("MAX_MILEAGE_KM", 100_000))
     max_km_per_year: int = field(default_factory=lambda: _i("MAX_KM_PER_YEAR", 30_000))
     blacklist: list[str] = field(default_factory=lambda: _list("BLACKLIST"))  # "марка" или "марка модель"
+    # Колонки реестра лизинговой компании (если их нет в файле — проверка пропускается)
+    vehicle_types: list[str] = field(default_factory=lambda: _list("VEHICLE_TYPES") or ["легковой"])
+    skip_statuses: list[str] = field(default_factory=lambda: _list("SKIP_STATUSES") or ["резерв", "отгрузка"])
+    bad_conditions: list[str] = field(default_factory=lambda: _list("BAD_CONDITIONS") or ["hard", "удовлетвор"])
+    bad_words: list[str] = field(default_factory=lambda: _list("BAD_WORDS") or [
+        "тотал", "сгор", "погорел", "утоп", "перевертыш", "перевёртыш", "не на ходу", "хлам",
+        "не продавать", "проблемное", "после дтп", "криминал", "арест", "розыск", "залог",
+    ])
 
     # --- этап 2: рынок (Claude + веб-поиск) ---
     min_liquidity: int = field(default_factory=lambda: _i("MIN_LIQUIDITY", 6))            # 1..10
     sale_discount: float = field(default_factory=lambda: _f("SALE_DISCOUNT", 0.05))       # торг при продаже
     prep_cost_rub: int = field(default_factory=lambda: _i("PREP_COST_RUB", 40_000))       # подготовка, оформление
-    min_profit_rub: int = field(default_factory=lambda: _i("MIN_PROFIT_RUB", 150_000))
+    min_profit_rub: int = field(default_factory=lambda: _i("MIN_PROFIT_RUB", 400_000))
     market_concurrency: int = field(default_factory=lambda: _i("MARKET_CONCURRENCY", 3))
+    usd_per_market_check: float = field(default_factory=lambda: _f("USD_PER_MARKET_CHECK", 0.4))  # для прикидки
 
     # --- этап 3: Автотека ---
     max_owners: int = field(default_factory=lambda: _i("MAX_OWNERS", 2))                  # 3+ владельцев — нет
