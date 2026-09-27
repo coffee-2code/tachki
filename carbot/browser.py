@@ -30,6 +30,7 @@ class Browser:
         self._pages: dict[str, object] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._start_lock = asyncio.Lock()
+        self._failed = ""  # браузер не запустился — второй раз не пробуем
 
     async def _say(self, text: str) -> None:
         log.warning(text)
@@ -40,6 +41,8 @@ class Browser:
         async with self._start_lock:
             if self._ctx:
                 return self._ctx
+            if self._failed:
+                raise SiteUnavailable(self._failed)
             try:
                 from playwright.async_api import async_playwright
             except ImportError as exc:
@@ -57,10 +60,12 @@ class Browser:
                         **opts, **({"channel": channel} if channel else {}))
                     break
                 except Exception as exc:  # noqa: BLE001 — Chrome не установлен → пробуем встроенный Chromium
-                    errors.append(f"{channel or 'chromium'}: {exc}")
+                    first = next((ln for ln in str(exc).splitlines() if ln.strip()), type(exc).__name__)
+                    errors.append(f"{channel or 'chromium'}: {first[:160]}")
             if not self._ctx:
-                raise SiteUnavailable("не запустился браузер. Выполните: python -m playwright install chromium\n"
-                                      + "\n".join(errors))
+                log.warning("Браузер не запустился:\n%s", "\n".join(errors))
+                self._failed = "не запустился браузер (выполните: python -m playwright install chromium)"
+                raise SiteUnavailable("не запустился браузер (выполните: python -m playwright install chromium)")
             return self._ctx
 
     async def get(self, site: str, url: str, is_captcha: IsCaptcha) -> str:

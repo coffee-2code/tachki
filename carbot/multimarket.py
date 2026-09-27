@@ -31,7 +31,7 @@ def summarize(car: Car, results: list[SourceResult], required: int) -> MultiMark
     by: list[SourcePrice] = []
     for r in results:
         if r.error:
-            by.append(SourcePrice(r.name, r.url, status=f"не проверено: {r.error}"))
+            by.append(SourcePrice(r.name, r.url, status=f"не проверено: {r.error.splitlines()[0][:160]}"))
             continue
         items = [x for x in r.items if x.year in (None, car.year)]
         med, n, status = price_for(items, car.mileage)
