@@ -146,7 +146,12 @@ def test_pipeline(tmp_path, s):
     out = tmp_path / "out.xlsx"
     write_result(evals, out, s)
     wb = load_workbook(out)
-    assert wb.sheetnames == ["Берём", "Отсеяно (легковые)", "Условия"]
+    assert wb.sheetnames == ["Берём", "Прибыль по всем", "Отсеяно (легковые)", "Условия"]
+    wp = wb["Прибыль по всем"]
+    assert wp.max_row == 1 + 6  # все, кто прошёл рынок, включая отсеянных потом
+    profits = [wp.cell(r, 10).value for r in range(2, wp.max_row + 1)]
+    assert profits == sorted(profits, reverse=True)
+    assert wp.cell(2, 15).value in ("БЕРЁМ", "нет")
     assert wb["Берём"].max_row == 2 and wb["Отсеяно (легковые)"].max_row == 7
 
 

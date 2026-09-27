@@ -211,20 +211,40 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
         _write_table(
             ws,
             ["Стр.", "Автомобиль", "VIN", "Год", "Пробег, км", "Цена в файле", "−15 %", "Платим (нал)",
-             "Медиана рынка", "Продадим за", "Прибыль", "Ликвидность /10", "Продажа, дней",
+             "Медиана рынка", "Продадим за", "Прибыль", "Маржа, %", "Ликвидность /10", "Продажа, дней",
              "Владельцев", "ДТП", "Код лота", "Модификация", "Регион", "Состояние", "Ключи", "Фото",
              "Заметки", "Спрос и отзывы", "Болячки", "Источники"],
             [[e.car.row, e.car.title, e.car.vin, e.car.year, e.car.mileage, _r(e.car.price), _r(e.purchase_price),
               _r(e.cash_price), e.market.median_price if e.market else None, _r(e.expected_sale), _r(e.profit),
+              round(e.profit / e.cash_price * 100, 1) if e.cash_price and e.profit is not None else None,
               e.market.liquidity if e.market else None, e.market.days_to_sell if e.market else None,
               e.history.owners if e.history else "не проверено",
               e.history.accidents if e.history else "не проверено",
               *_lot(e.car), "\n".join(e.notes),
               e.market.demand_notes if e.market else "", e.market.known_issues if e.market else "",
               "\n".join(e.market.sources[:5]) if e.market else ""] for e in good],
-            [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 10, 10, 10, 8, 10, 22, 14, 18, 14, 30, 35, 45, 40, 45],
+            [6, 28, 20, 7, 11, 13, 13, 13, 13, 13, 12, 9, 10, 10, 10, 8, 10, 22, 14, 18, 14, 30, 35, 45, 40, 45],
             GOOD_FILL,
         )
+
+    priced = sorted([e for e in evals if e.profit is not None], key=lambda e: e.profit, reverse=True)
+    if priced:
+        wsp = wb.create_sheet("Прибыль по всем")
+        _write_table(
+            wsp,
+            ["Стр.", "Автомобиль", "Пробег, км", "Платим (нал)", "Рынок: от", "Рынок: медиана", "Рынок: до",
+             "Продадим за", "Подготовка", "Прибыль", "Маржа, %", "Ликвидность /10", "Продажа, дней",
+             "Объявлений", "Итог", "Почему нет"],
+            [[e.car.row, e.car.title, e.car.mileage, _r(e.cash_price), e.market.min_price, e.market.median_price,
+              e.market.max_price, _r(e.expected_sale), s.prep_cost_rub, _r(e.profit),
+              round(e.profit / e.cash_price * 100, 1) if e.cash_price else None,
+              e.market.liquidity, e.market.days_to_sell, e.market.listings_found,
+              "БЕРЁМ" if e.passed else "нет", "\n".join(e.reasons)] for e in priced],
+            [6, 28, 11, 13, 13, 13, 13, 13, 11, 12, 9, 10, 10, 10, 8, 50],
+        )
+        for r, e in enumerate(priced, start=2):
+            wsp.cell(r, 11).number_format = "0.0"
+            wsp.cell(r, 15).fill = GOOD_FILL if e.passed else BAD_FILL
 
     cands = [e for e in evals if e.stage == "candidate"]  # прошли бесплатный отсев, рынок не проверялся
     if cands:

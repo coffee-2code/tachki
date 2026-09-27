@@ -173,10 +173,14 @@ async def on_choice(cb: CallbackQuery) -> None:
         finally:
             await autoteka.aclose()
         good = sorted([e for e in evals if e.passed], key=lambda e: e.profit or 0, reverse=True)
-        lines = [f"Готово. Из {len(evals)} берём <b>{len(good)}</b>."]
+        priced = [e for e in evals if e.profit is not None]
+        lines = [f"Готово. Оценено на рынке: {len(priced)}, берём <b>{len(good)}</b>."]
+        if good:
+            lines.append(f"Суммарная прибыль по «берём»: ~{sum(e.profit for e in good):,.0f} ₽".replace(",", " "))
         for e in good[:10]:
-            lines.append(f"• {html.escape(e.car.title)} — прибыль ~{e.profit:,.0f} ₽, ликвидность {e.market.liquidity}/10"
-                         .replace(",", " "))
+            lines.append(f"• {html.escape(e.car.title)} — прибыль ~{e.profit:,.0f} ₽ "
+                         f"({e.profit / e.cash_price:.0%}), ликвидность {e.market.liquidity}/10".replace(",", " "))
+        lines.append("Прибыль по каждой оценённой машине — лист «Прибыль по всем».")
         await _send_result(cb.message, evals, stem, "\n".join(lines))
     except Exception as exc:  # noqa: BLE001
         log.exception("processing failed")
