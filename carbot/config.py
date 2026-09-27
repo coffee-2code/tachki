@@ -51,6 +51,7 @@ class Settings:
     # Колонки реестра лизинговой компании (если их нет в файле — проверка пропускается)
     vehicle_types: list[str] = field(default_factory=lambda: _list("VEHICLE_TYPES") or ["легковой"])
     allow_statuses: list[str] = field(default_factory=lambda: _list("ALLOW_STATUSES") or ["в продаже"])
+    skip_no_keys: bool = field(default_factory=lambda: _b("SKIP_NO_KEYS", True))  # без ключей не рассматриваем
     skip_rhd: bool = field(default_factory=lambda: _b("SKIP_RHD", True))  # правый руль не рассматриваем
     bad_conditions: list[str] = field(default_factory=lambda: _list("BAD_CONDITIONS") or ["hard", "удовлетвор"])
     bad_words: list[str] = field(default_factory=lambda: _list("BAD_WORDS") or [

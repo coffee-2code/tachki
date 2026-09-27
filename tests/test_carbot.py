@@ -162,6 +162,9 @@ def test_leasing_registry_filters(s):
     assert file_stage_reasons(car(extra={"Статус ИЗТ": "В продаже"}), s) == []
     rhd = car(model="LAND CRUISER PRADO (правый руль)", extra={"Статус ИЗТ": "В продаже"})
     assert file_stage_reasons(rhd, s) == ["Правый руль"]
+    assert file_stage_reasons(car(extra={"Нет ключей": "Нет ключей"}), s) == ["Нет ключей"]
+    assert file_stage_reasons(car(extra={"Количество ключей после изъятия": "Нет ключей"}), s) == ["Нет ключей"]
+    assert file_stage_reasons(car(extra={"Нет ключей": "", "Количество ключей после изъятия": "1 ключ"}), s) == []
     hard = car(extra={"Тип ТС": "ЛЕГКОВОЙ", "Состояние ПЛ": "HARD (тотал, сгоревшие)"})
     assert "Состояние" in file_stage_reasons(hard, s)[0]
     crashed = car(extra={"Тип ТС": "ЛЕГКОВОЙ", "Комментарии по ключам": "На ходу, после ДТП, замята крыша"})

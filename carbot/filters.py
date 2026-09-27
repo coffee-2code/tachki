@@ -17,6 +17,15 @@ def is_rhd(car: Car) -> bool:
     return any(m in text for m in RHD_MARKERS) or car.get("руль").lower().startswith("прав")
 
 
+NO_KEYS_MARKERS = ("нет ключ", "ключей нет", "без ключ", "ключи отсутств", "ключ отсутств")
+
+
+def has_no_keys(car: Car) -> bool:
+    cols = " ".join([car.get("нет ключей"), car.get("количество ключей", "кол-во ключей")]).lower()
+    comments = " ".join(str(v) for h, v in car.extra.items() if "ключ" in str(h).lower() and v).lower()
+    return any(m in cols for m in NO_KEYS_MARKERS) or any(m in comments for m in NO_KEYS_MARKERS)
+
+
 def file_stage_reasons(car: Car, s: Settings) -> list[str]:
     reasons: list[str] = []
 
@@ -27,6 +36,8 @@ def file_stage_reasons(car: Car, s: Settings) -> list[str]:
     status = car.get("статус изт", "статус лота", "статус продажи").lower()
     if status and not any(st == status for st in s.allow_statuses):
         reasons.append(f"Не в продаже: статус «{car.get('статус изт', 'статус лота', 'статус продажи')}»")
+    if s.skip_no_keys and has_no_keys(car):
+        reasons.append("Нет ключей")
     if s.skip_rhd and is_rhd(car):
         reasons.append("Правый руль")
     cond = car.get("состояние").lower()

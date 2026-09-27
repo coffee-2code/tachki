@@ -265,6 +265,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings) -> None
         ["Год выпуска от", s.min_year or f"не старше {s.max_age_years} лет"],
         ["Тип ТС", ", ".join(s.vehicle_types)],
         ["Статус лота", ", ".join(s.allow_statuses)],
+        ["Без ключей", "не рассматриваем" if s.skip_no_keys else "рассматриваем"],
         ["Правый руль", "не рассматриваем" if s.skip_rhd else "рассматриваем"],
         ["Плохое состояние", ", ".join(s.bad_conditions)],
         ["Стоп-слова в комментариях", ", ".join(s.bad_words)],
