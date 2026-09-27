@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Автосалон Тачки</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<!-- app:start -->
+<header class="top">
+  <div class="top-inner">
+    <a class="logo" href="#catalog" data-view="catalog">ТАЧКИ<span class="logo-dot"></span></a>
+    <nav class="nav" aria-label="Разделы">
+      <button type="button" class="nav-btn is-active" data-view="catalog">Каталог</button>
+      <button type="button" class="nav-btn" data-view="favorites">Избранное <span class="count" id="fav-count">0</span></button>
+      <button type="button" class="nav-btn" data-view="requests">Заявки <span class="count" id="req-count">0</span></button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="view" id="view-catalog">
+    <div class="intro">
+      <h1>Автомобили в&nbsp;наличии</h1>
+      <p class="lead">Новые и&nbsp;с&nbsp;пробегом. Каждую машину с&nbsp;пробегом проверяем по&nbsp;120&nbsp;пунктам и&nbsp;по&nbsp;базам ГИБДД и&nbsp;ФНП.</p>
+    </div>
+
+    <form class="filters" id="filters" autocomplete="off">
+      <label class="field field-search">
+        <span>Поиск</span>
+        <input type="search" id="f-q" placeholder="Марка или модель">
+      </label>
+      <label class="field">
+        <span>Марка</span>
+        <select id="f-brand"><option value="">Все</option></select>
+      </label>
+      <label class="field">
+        <span>Кузов</span>
+        <select id="f-body"><option value="">Любой</option></select>
+      </label>
+      <label class="field">
+        <span>Состояние</span>
+        <select id="f-cond">
+          <option value="">Все</option>
+          <option value="new">Новые</option>
+          <option value="used">С пробегом</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Цена до, ₽</span>
+        <input type="number" id="f-price" inputmode="numeric" step="100000" min="0" placeholder="Без ограничений">
+      </label>
+      <label class="field">
+        <span>Сортировка</span>
+        <select id="f-sort">
+          <option value="price-asc">Сначала дешевле</option>
+          <option value="price-desc">Сначала дороже</option>
+          <option value="year-desc">Сначала новее</option>
+          <option value="mileage-asc">Меньше пробег</option>
+        </select>
+      </label>
+      <button type="reset" class="btn btn-ghost" id="f-reset">Сбросить</button>
+    </form>
+
+    <p class="result-line" id="result-line"></p>
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="empty" hidden>Под эти условия машин нет. Попробуйте поднять цену или сбросить фильтры.</p>
+  </section>
+
+  <section class="view" id="view-favorites" hidden>
+    <div class="intro">
+      <h1>Избранное</h1>
+      <p class="lead">Машины, которые вы отметили сердечком. Список хранится в&nbsp;этом браузере.</p>
+    </div>
+    <div class="grid" id="fav-grid"></div>
+    <p class="empty" id="fav-empty" hidden>Пока пусто. Нажмите ♡ на&nbsp;карточке в&nbsp;каталоге.</p>
+  </section>
+
+  <section class="view" id="view-requests" hidden>
+    <div class="intro">
+      <h1>Заявки на&nbsp;тест-драйв</h1>
+      <p class="lead">Экран менеджера. Сейчас заявки сохраняются только в&nbsp;этом браузере&nbsp;— отправку на&nbsp;сервер подключим следующим шагом.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="req-table">
+        <thead>
+          <tr><th>Создана</th><th>Автомобиль</th><th>Клиент</th><th>Телефон</th><th>Дата визита</th><th>Статус</th><th></th></tr>
+        </thead>
+        <tbody id="req-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="req-empty" hidden>Заявок пока нет. Откройте любую машину в&nbsp;каталоге и&nbsp;запишитесь на&nbsp;тест-драйв.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="foot-inner">
+    <div><strong>Тачки</strong> · <span id="d-address"></span></div>
+    <div><span class="mono" id="d-phone"></span> · <span id="d-hours"></span></div>
+  </div>
+</footer>
+
+<dialog class="sheet" id="car-dialog" aria-labelledby="car-title">
+  <div class="sheet-body" id="car-sheet"></div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<!-- app:end -->
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
