@@ -106,10 +106,6 @@ def _site_price(name: str) -> Col:
     return Col(f"{name}:\nмин. цена", 14, get, "money")
 
 
-def _site_place(name: str) -> Col:
-    return Col(f"{name}:\nгде стоит", 22, lambda e: (_site(e, name) or {}).get("low_place") or None)
-
-
 def _site_link(name: str) -> Col:
     """Ссылка на самое дешёвое подходящее объявление, иначе — на поиск."""
     def get(e: Evaluation):
@@ -129,7 +125,6 @@ def _site_skipped(e: Evaluation) -> str:
 
 SITES = ("Дром", "Авто.ру")
 C_SITE_PRICES = [_site_price(n) for n in SITES]
-C_SITE_PLACES = [_site_place(n) for n in SITES]
 C_SITE_LINKS = [_site_link(n) for n in SITES]
 C_SKIPPED = Col("Отброшены дешевле\n(почему)", 44, _site_skipped, "wrap")
 C_DROM = Col("Дром", 9, _link, "link")
@@ -411,7 +406,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
                "Прошли все этапы. Отсортировано по прибыли. VIN проверьте в Автотеке перед покупкой, "
                "если она не подключена.",
                [C_CAR, C_YEAR, C_KM, C_REGION, C_SRS, C_MINUS, C_PAY, *C_SITE_PRICES, C_MEDIAN, C_SALE,
-                C_PROFIT, C_MARGIN, C_LIQ, C_DAYS, *C_SITE_LINKS, *C_SITE_PLACES, C_PHOTO, Col("Владель-\nцев", 9, lambda e: _history(e, "owners"), "int"),
+                C_PROFIT, C_MARGIN, C_LIQ, C_DAYS, *C_SITE_LINKS, C_PHOTO, Col("Владель-\nцев", 9, lambda e: _history(e, "owners"), "int"),
                 Col("ДТП", 6, lambda e: _history(e, "accidents"), "int"),
                 C_LOT, C_VIN, C_MOD, C_COND, C_KEYS, C_NOTES],
                good, s.min_profit_rub)
@@ -424,7 +419,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
                + "Здесь видно и то, что не дотянуло.",
                [Col("Итог", 9, lambda e: "БЕРЁМ" if e.passed else "нет", "badge"),
                 C_CAR, C_YEAR, C_KM, C_SRS, C_MINUS, C_PAY, *C_SITE_PRICES, C_MEDIAN, C_SALE, C_PROFIT, C_MARGIN,
-                C_LIQ, C_ADS, *C_SITE_LINKS, *C_SITE_PLACES,
+                C_LIQ, C_ADS, *C_SITE_LINKS,
                 Col("Почему нет", 50, lambda e: "\n".join(e.reasons), "wrap"), C_SKIPPED],
                priced, s.min_profit_rub)
 
