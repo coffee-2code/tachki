@@ -113,7 +113,7 @@ async def evaluate_rest(
         e.expected_sale = pricing.expected_sale(m, s)
         e.profit = pricing.profit(e.car, m, s)
         if m.listings_found == 0:
-            e.reject("На площадках не нашлось похожих объявлений — оценить нельзя")
+            e.reject("В Москве нет подходящих объявлений (учёт РФ, в наличии, похожий пробег) — оценить нельзя")
         if m.liquidity < s.min_liquidity:
             e.reject(f"Неликвид: {m.liquidity}/10, продажа ~{m.days_to_sell} дн.")
         if e.profit < s.min_profit_rub:

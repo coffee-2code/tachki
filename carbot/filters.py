@@ -38,6 +38,8 @@ def file_stage_reasons(car: Car, s: Settings) -> list[str]:
         reasons.append(f"Не в продаже: статус «{car.get('статус изт', 'статус лота', 'статус продажи')}»")
     if s.skip_no_keys and has_no_keys(car):
         reasons.append("Нет ключей")
+    if s.skip_us_vin and car.vin[:1] and car.vin[:1] in s.us_vin_prefixes:
+        reasons.append(f"Американский VIN: {car.vin[:3]}… — скорее всего аукцион битых")
     if s.skip_rhd and is_rhd(car):
         reasons.append("Правый руль")
     cond = car.get("состояние").lower()
@@ -62,7 +64,7 @@ def file_stage_reasons(car: Car, s: Settings) -> list[str]:
         reasons.append("Не указан год выпуска")
 
     if car.mileage is None or car.mileage < s.min_mileage_km:
-        reasons.append(f"Пробег {car.mileage or 0} км — не смогли запустить")
+        reasons.append(f"Пробег 0–1 км: {car.mileage or 0} км — не смогли запустить")
     elif car.mileage:
         if car.mileage > s.max_mileage_km:
             reasons.append(f"Большой пробег: {_n(car.mileage)} км (максимум {_n(s.max_mileage_km)})")

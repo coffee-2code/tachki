@@ -59,6 +59,59 @@ def detect_rollback(records: list[tuple[str, int]], tolerance: int) -> bool:
     return False
 
 
+FLAG_KEYS = {"pledge": "залог", "restrict": "ограничения", "wanted": "розыск", "taxi": "такси",
+             "carshar": "каршеринг", "leasing": "лизинг", "total": "тотал", "arrest": "арест"}
+
+
+def _walk(obj, path=""):
+    """Все пары (путь.ключ, значение) на любой глубине."""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            p = f"{path}.{k}".lower()
+            yield p, v
+            yield from _walk(v, p)
+    elif isinstance(obj, list):
+        for v in obj:
+            if isinstance(v, dict):
+                yield path, v  # элемент списка — тоже запись (пробег, ДТП)
+            yield from _walk(v, path)
+
+
+def extract_heuristic(raw: dict) -> Optional[_HistoryExtract]:
+    """Разбор отчёта без нейросети: ищем по названиям полей владельцев, ДТП, пробеги и ограничения.
+    None — если в отчёте не нашлось ни владельцев, ни пробегов (формат неизвестен)."""
+    owners = accidents = None
+    records: list[_MileageRecord] = []
+    flags: list[str] = []
+    for path, v in _walk(raw):
+        key = path.rsplit(".", 1)[-1]
+        if "owner" in key:
+            if isinstance(v, int) and not isinstance(v, bool) and ("count" in key or "number" in key or key == "owners"):
+                owners = max(owners or 0, v)
+            elif isinstance(v, list) and owners is None:
+                owners = len(v)
+        if any(w in key for w in ("accident", "dtp", "crash")):
+            if isinstance(v, list):
+                accidents = max(accidents or 0, len(v))
+            elif isinstance(v, int) and not isinstance(v, bool) and "count" in key:
+                accidents = max(accidents or 0, v)
+        if isinstance(v, dict):
+            km = next((v[k] for k in v if any(w in k.lower() for w in ("mileage", "odometer", "probeg"))
+                       and isinstance(v[k], (int, float)) and not isinstance(v[k], bool)), None)
+            date = next((v[k] for k in v if "date" in k.lower() and isinstance(v[k], str)), None)
+            if km is not None and date:
+                records.append(_MileageRecord(date=date[:10], km=int(km)))
+        truthy = v is True or (isinstance(v, list) and len(v) > 0) or (
+            isinstance(v, str) and v.strip().lower() not in ("", "false", "no", "нет", "0"))
+        if truthy and not isinstance(v, dict):
+            for fk, name in FLAG_KEYS.items():
+                if fk in key and name not in flags:
+                    flags.append(name)
+    if owners is None and not records:
+        return None
+    return _HistoryExtract(owners=owners or 0, accidents=accidents or 0, mileage_records=records, flags=flags)
+
+
 class AutotekaClient:
     def __init__(self, s: Settings, claude=None):
         self.s = s
@@ -153,7 +206,12 @@ class AutotekaClient:
         path = REPORTS_DIR / f"{vin}_{datetime.now():%Y%m%d_%H%M%S}.json"
         path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        ex = await self._extract(raw)
+        ex = extract_heuristic(raw)
+        if ex is None:  # незнакомый формат — пробуем Claude, если он подключён
+            try:
+                ex = await self._extract(raw)
+            except RuntimeError as exc:
+                raise RuntimeError(f"не удалось разобрать отчёт, он сохранён в {path}") from exc
         records = [(m.date, m.km) for m in ex.mileage_records]
         return HistoryReport(
             owners=ex.owners or None,

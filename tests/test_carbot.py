@@ -100,8 +100,9 @@ def mr(median, liq=8, n=20):
     return MultiMarketReport(median_price=median, min_price=median - 200_000, max_price=median + 200_000,
                              listings_found=n, liquidity=liq, days_to_sell=20, demand_notes="спрос есть",
                              known_issues="", sources=["https://auto.drom.ru/x"],
-                             by_source=[{"name": "Дром", "url": "https://auto.drom.ru/x", "median": median,
-                                         "comps": 10, "total": n, "status": "ok"}])
+                             by_source=[{"name": "Дром", "url": "https://auto.drom.ru/x", "low": median,
+                                         "low_url": "https://auto.drom.ru/x/1.html", "low_place": "Москва",
+                                         "total": n, "status": "ok", "skipped": ["1 500 000 ₽ — под заказ"]}])
 
 
 def test_pipeline(tmp_path, s):
@@ -154,8 +155,9 @@ def test_pipeline(tmp_path, s):
     profits = [wp.cell(r, head.index("Прибыль") + 1).value for r in range(4, wp.max_row + 1)]
     assert profits == sorted(profits, reverse=True)
     assert wp.cell(4, head.index("Итог") + 1).value == "БЕРЁМ"
-    assert wp.cell(4, head.index("Дром\n↗") + 1).hyperlink is not None  # ссылка на объявления
-    assert wp.cell(4, head.index("Дром:\nмедиана") + 1).value == 2_000_000
+    assert wp.cell(4, head.index("Дром:\nобъявление ↗") + 1).hyperlink.target.endswith("/1.html")
+    assert wp.cell(4, head.index("Дром:\nмин. цена") + 1).value == 2_000_000
+    assert "под заказ" in wp.cell(4, head.index("Отброшены дешевле\n(почему)") + 1).value
     assert wp.cell(4, head.index("После скидки\n−15 %") + 1).value == pytest.approx(1_700_000)
     assert wp.cell(4, head.index("Платим:\n× 0,86 (нал)") + 1).value == pytest.approx(1_462_000)
     assert wb["Берём"].max_row == 4 and wb["Отсеяно"].max_row == 3 + 6
@@ -183,8 +185,11 @@ def test_leasing_registry_filters(s):
     assert "после дтп" in file_stage_reasons(crashed, s)[0]
     assert "Старая" in file_stage_reasons(car(year=2017), s)[0]
     for km in (0, 1, None):
-        assert file_stage_reasons(car(mileage=km), s) == [f"Пробег {km or 0} км — не смогли запустить"]
+        assert file_stage_reasons(car(mileage=km), s) == [f"Пробег 0–1 км: {km or 0} км — не смогли запустить"]
     assert file_stage_reasons(car(mileage=2), s) == []
+    assert "Американский VIN" in file_stage_reasons(car(vin="1C4RJHBG7P8792172"), s)[0]
+    assert "Американский VIN" in file_stage_reasons(car(vin="4JGFB5KB3RB069245"), s)[0]
+    assert file_stage_reasons(car(vin="LVTDD24B9PD144841"), s) == []
 
 
 def test_registry_columns(tmp_path, s):

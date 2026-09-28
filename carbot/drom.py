@@ -1,8 +1,9 @@
 """Дром: бот сам открывает поиск и собирает объявления (обычные запросы, без браузера).
 
 1. Находит на Дроме адрес марки и модели (списки берутся с сайта и кэшируются в drom_slugs.json).
-2. Открывает «б/у, этот год выпуска» по всей России: auto.drom.ru/<марка>/<модель>/year-<год>/used/
-   и собирает цены и пробеги с первых страниц.
+2. Открывает «б/у, этот год выпуска, вся Россия, сначала дешёвые»:
+   auto.drom.ru/<марка>/<модель>/year-<год>/used/?order=price — и собирает цены, пробеги и города.
+3. Самые дешёвые похожие объявления открывает и читает описание (detail_text).
 Запросы идут медленно, с паузами. Если страница не разобралась, её HTML сохраняется в debug/.
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ from bs4 import BeautifulSoup
 
 from .config import Settings
 from .listings import (MODEL_NOISE, TRANSLIT, Listing, SiteUnavailable, SourceResult, cards_by_links,  # noqa: F401
-                       liquidity_from_count, links_map, norm, parse_mileage, parse_total, pick_slug)
+                       liquidity_from_count, links_map, main_text, norm, parse_mileage, parse_total, pick_slug)
 from .models import Car, MarketReport
 
 log = logging.getLogger(__name__)
@@ -70,6 +71,7 @@ class DromMarket:
         self._lock = asyncio.Lock()  # по одному запросу за раз — бережём Дром и себя от бана
         self._slugs: dict = json.loads(SLUGS_FILE.read_text("utf-8")) if SLUGS_FILE.exists() else {}
         self._pages: dict[str, SourceResult] = {}
+        self._details: dict[str, str] = {}
 
     # ---------- сеть
     async def _get(self, url: str) -> str:
@@ -109,8 +111,17 @@ class DromMarket:
         return pick_slug(model, models, MODEL_NOISE)
 
     def search_url(self, brand_slug: str, model_slug: str, year: int, page: int = 1) -> str:
-        url = f"{BASE}/{brand_slug}/{model_slug}/year-{year}/used/"
-        return url + (f"page{page}/" if page > 1 else "")
+        region = f"/{self.s.drom_region}" if self.s.drom_region else ""
+        url = f"{BASE}{region}/{brand_slug}/{model_slug}/year-{year}/used/"
+        return url + (f"page{page}/" if page > 1 else "") + "?order=price"
+
+    async def detail_text(self, url: str) -> str:
+        """Текст страницы объявления: описание, характеристики, продавец."""
+        if url.startswith("/"):
+            url = BASE + url
+        if url not in self._details:
+            self._details[url] = main_text(await self._get(url))
+        return self._details[url]
 
     # ---------- объявления
     async def fetch(self, car: Car) -> SourceResult:
@@ -148,11 +159,12 @@ class DromMarket:
         return (car.row,)  # страницы кэшируются по модели, похожие по пробегу считаются для каждой машины
 
     async def analyze(self, car: Car) -> MarketReport:
-        from .multimarket import summarize
+        from .multimarket import lowest_valid, summarize
         res = await self.fetch(car)
         if res.error:
             raise RuntimeError(f"Дром: {res.error}")
-        return summarize(car, [res], required=1)
+        sp = await lowest_valid(self, car, res, self.s.detail_checks, self.s.max_distance_km, self.s.road_factor)
+        return summarize(car, [sp], required=1)
 
     async def aclose(self) -> None:
         await self.http.aclose()

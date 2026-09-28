@@ -1,4 +1,5 @@
-"""Авто.ру через браузер: б/у этого года по всей России, цены и пробеги с первых страниц."""
+"""Авто.ру через браузер: б/у этого года, вся Россия, только «в наличии», сначала дешёвые.
+Самые дешёвые похожие объявления открываются и читаются целиком (detail_text)."""
 from __future__ import annotations
 
 import json
@@ -11,8 +12,8 @@ from bs4 import BeautifulSoup
 
 from .browser import Browser
 from .config import Settings
-from .listings import (MODEL_NOISE, TRANSLIT, Listing, SourceResult, cards_by_links, links_map, parse_mileage,
-                       parse_price, parse_total, parse_year, pick_slug)
+from .listings import (MODEL_NOISE, TRANSLIT, Listing, SourceResult, cards_by_links, links_map, main_text,
+                       parse_mileage, parse_price, parse_total, parse_year, pick_slug)
 from .models import Car
 
 log = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class AutoRuMarket:
         self.browser = browser
         self._slugs: dict = json.loads(SLUGS_FILE.read_text("utf-8")) if SLUGS_FILE.exists() else {}
         self._pages: dict[str, SourceResult] = {}
+        self._details: dict[str, str] = {}
 
     async def _get(self, url: str) -> str:
         return await self.browser.get(self.name, url, is_captcha)
@@ -79,7 +81,15 @@ class AutoRuMarket:
         return pick_slug(model, models, MODEL_NOISE)
 
     def search_url(self, b: str, m: str, year: int, page: int = 1) -> str:
-        return f"{BASE}/rossiya/cars/{b}/{m}/{year}-year/used/" + (f"?page={page}" if page > 1 else "")
+        url = f"{BASE}/{self.s.autoru_region}/cars/{b}/{m}/{year}-year/used/?in_stock=IN_STOCK&sort=price-asc"
+        return url + (f"&page={page}" if page > 1 else "")
+
+    async def detail_text(self, url: str) -> str:
+        if url.startswith("/"):
+            url = BASE + url
+        if url not in self._details:
+            self._details[url] = main_text(await self._get(url))
+        return self._details[url]
 
     async def fetch(self, car: Car) -> SourceResult:
         if not car.year:

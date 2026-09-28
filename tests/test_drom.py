@@ -10,17 +10,19 @@ from carbot.drom import (DromBlocked, DromMarket, liquidity_from_count, parse_li
 from carbot.models import Car
 
 
-def card(price, km, extra=""):
-    return (f'<div data-ftid="bulls-list_bull"><a href="https://novosibirsk.drom.ru/chery/tiggo_7_pro_max/'
+def card(price, km, extra="", city="Москва"):
+    return (f'<div data-ftid="bulls-list_bull"><a href="https://auto.drom.ru/chery/tiggo_7_pro_max/'
             f'5{price}.html"><h3 data-ftid="bull_title">Chery Tiggo 7 Pro Max, 2023</h3></a>'
             f'<span data-ftid="bull_description-item">1.6 л (186 л.с.), бензин,</span>'
             f'<span data-ftid="bull_description-item">{km} тыс. км{extra}</span>'
-            f'<span data-ftid="bull_price">{price:,}</span> ₽</div>').replace(",", "\xa0")
+            f'<span data-ftid="bull_price">{price:,}</span> ₽<span data-ftid="bull_location">{city}</span></div>'
+            ).replace(",", "\xa0")
 
 
 def listing_page(items, total=508):
+    cards = "".join(card(*it) for it in items)
     return (f"<html><head><title>Купить Чери Тигго 7 Про Макс б/у 2023 от 1 434 000 рублей – {total} объявлений "
-            f"на Дроме</title></head><body>{''.join(card(p, k, x) for p, k, x in items)}</body></html>")
+            f"на Дроме</title></head><body>{cards}</body></html>")
 
 
 def test_parse_helpers():
@@ -81,27 +83,42 @@ def make_market(tmp_path, monkeypatch, routes, status=200):
 
 
 def test_analyze_end_to_end(tmp_path, monkeypatch):
+    """Самая низкая цена — только среди подходящих: не битые, не далеко, не под заказ, учёт РФ."""
     base = "https://auto.drom.ru"
-    items = [(1_900_000 + i * 20_000, 20 + i * 5, "") for i in range(12)]  # 20..75 тыс. км
-    items.append((700_000, 40, ", битый"))  # битый — не учитываем
+    items = [
+        (700_000, 30, ", битый"),                  # битая — отбрасываем по карточке
+        (1_800_000, 32, "", "Новосибирск"),        # далеко — отбрасываем, не открывая
+        (1_850_000, 28, ""),                       # в описании «под заказ» — отбрасываем после открытия
+        (1_870_000, 30, "", "Минск"),              # не РФ
+        (1_900_000, 35, "", "Казань"),             # подходит — самая низкая
+        (1_950_000, 25, ""),                       # подходит — вторая
+        (2_000_000, 29, ""),
+        (1_500_000, 150, ""),                      # пробег не похож — не сравниваем
+    ]
+    detail = "<html><body><main>Chery Tiggo 7 Pro Max. Автомобиль под заказ из Китая, срок 30 дней.</main></body></html>"
     routes = {
         f"{base}/": '<a href="https://auto.drom.ru/chery/">Chery</a><a href="https://auto.drom.ru/lada/">Лада</a>',
         f"{base}/chery/": '<a href="https://auto.drom.ru/chery/tiggo_7_pro_max/">Tiggo 7 Pro Max</a>'
                           '<a href="https://auto.drom.ru/chery/tiggo_4_pro/">Tiggo 4 Pro</a>',
-        f"{base}/chery/tiggo_7_pro_max/year-2023/used/": listing_page(items, total=13),
+        f"{base}/chery/tiggo_7_pro_max/year-2023/used/?order=price": listing_page(items, total=8),
+        f"{base}/chery/tiggo_7_pro_max/51850000.html": detail,
     }
     market, seen = make_market(tmp_path, monkeypatch, routes)
     car = Car(row=5, brand="Chery", model="Tiggo 7 Pro Max", year=2023, mileage=30_000, price=2_085_000)
     rep = asyncio.run(market.analyze(car))
-    assert rep.listings_found == 13
-    assert 1_900_000 <= rep.median_price <= 2_150_000  # только похожие по пробегу, без битого за 700 тыс.
-    assert rep.min_price > 700_000
-    assert rep.sources == [f"{base}/chery/tiggo_7_pro_max/year-2023/used/"]
-    # второй запрос той же модели — из кэша, без новых обращений к сайту
-    n = len(seen)
-    asyncio.run(market.analyze(Car(row=6, brand="Chery", model="Tiggo 7 Pro Max", year=2023, mileage=70_000,
+    (site,) = rep.by_source
+    assert rep.median_price == 1_900_000 and site["low"] == 1_900_000 and site["second"] == 1_950_000
+    assert site["low_place"].startswith("Казань")
+    assert site["low_url"].endswith("51900000.html")
+    why = "\n".join(site["skipped"])
+    assert "битая" in why and "далеко: Новосибирск" in why and "под заказ" in why and "не РФ: Минск" in why
+    assert not any("51800000" in u for u in seen)  # далёкую даже не открывали
+    assert rep.listings_found == 8
+    # вторая машина той же модели — поиск из кэша, новых обращений к поиску нет
+    n = sum("used" in u for u in seen)
+    asyncio.run(market.analyze(Car(row=6, brand="Chery", model="Tiggo 7 Pro Max", year=2023, mileage=28_000,
                                    price=2_000_000)))
-    assert len(seen) == n
+    assert sum("used" in u for u in seen) == n
     assert (tmp_path / "drom_slugs.json").exists()
 
 

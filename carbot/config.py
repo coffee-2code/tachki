@@ -74,7 +74,14 @@ class Settings:
     # --- этап 2: рынок ---
     # free — бесплатно, бот сам собирает цены с площадок MARKET_SOURCES; claude — платно, Claude с веб-поиском
     market_source: str = field(default_factory=lambda: _s("MARKET_SOURCE", "free").strip().lower())
-    market_sources: list[str] = field(default_factory=lambda: _list("MARKET_SOURCES") or ["drom", "autoru", "avito"])
+    market_sources: list[str] = field(default_factory=lambda: _list("MARKET_SOURCES") or ["drom", "autoru"])
+    drom_region: str = field(default_factory=lambda: _s("DROM_REGION", ""))           # пусто — вся Россия
+    autoru_region: str = field(default_factory=lambda: _s("AUTORU_REGION", "rossiya"))
+    max_distance_km: int = field(default_factory=lambda: _i("MAX_DISTANCE_KM", 2000))  # от Москвы, примерно по дорогам
+    road_factor: float = field(default_factory=lambda: _f("ROAD_FACTOR", 1.2))  # по прямой × 1,2 ≈ по дорогам
+    detail_checks: int = field(default_factory=lambda: _i("DETAIL_CHECKS", 6))  # сколько дешёвых объявлений открыть
+    skip_us_vin: bool = field(default_factory=lambda: _b("SKIP_US_VIN", True))  # VIN США/Канады/Мексики — аукционы
+    us_vin_prefixes: str = field(default_factory=lambda: _s("US_VIN_PREFIXES", "12345"))
     sources_required: int = field(default_factory=lambda: _i("SOURCES_REQUIRED", 0))  # 0 — все из MARKET_SOURCES
     browser_headless: bool = field(default_factory=lambda: _b("BROWSER_HEADLESS", False))  # окно видно — капчу решаете вы
     # chrome — ваш установленный Chrome; chromium — встроенный браузер
@@ -84,11 +91,10 @@ class Settings:
     browser_delay_max: float = field(default_factory=lambda: _f("BROWSER_DELAY_MAX", 5.0))
     captcha_wait_sec: int = field(default_factory=lambda: _i("CAPTCHA_WAIT_SEC", 180))
     autoru_max_pages: int = field(default_factory=lambda: _i("AUTORU_MAX_PAGES", 2))
-    avito_max_pages: int = field(default_factory=lambda: _i("AVITO_MAX_PAGES", 2))
     drom_max_pages: int = field(default_factory=lambda: _i("DROM_MAX_PAGES", 3))       # по 20 объявлений
     drom_delay_min: float = field(default_factory=lambda: _f("DROM_DELAY_MIN", 2.0))   # паузы между запросами, сек
     drom_delay_max: float = field(default_factory=lambda: _f("DROM_DELAY_MAX", 5.0))
-    min_liquidity: int = field(default_factory=lambda: _i("MIN_LIQUIDITY", 6))            # 1..10
+    min_liquidity: int = field(default_factory=lambda: _i("MIN_LIQUIDITY", 6))            # 1..10, по объявлениям года по России
     sale_discount: float = field(default_factory=lambda: _f("SALE_DISCOUNT", 0.05))       # торг при продаже
     prep_cost_rub: int = field(default_factory=lambda: _i("PREP_COST_RUB", 40_000))       # подготовка, оформление
     min_profit_rub: int = field(default_factory=lambda: _i("MIN_PROFIT_RUB", 400_000))

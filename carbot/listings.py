@@ -35,6 +35,7 @@ class Listing:
     text: str
     url: str = ""
     year: Optional[int] = None
+    place: str = ""                   # город и расстояние до Москвы, если определили
 
 
 @dataclass
@@ -48,12 +49,73 @@ class SourceResult:
 
 @dataclass
 class SourcePrice:
+    """Итог по одной площадке: самые дешёвые подходящие объявления."""
     name: str
-    url: str
-    median: Optional[int] = None
-    comps: int = 0
-    total: Optional[int] = None
-    status: str = "ok"              # ok | мало объявлений | нет объявлений | не проверено: …
+    url: str                          # поиск, по которому смотрели
+    low: Optional[int] = None         # самая низкая цена среди проверенных объявлений
+    low_url: str = ""                 # само объявление
+    second: Optional[int] = None      # вторая по дешевизне — для контроля
+    second_url: str = ""
+    low_place: str = ""               # где стоит самая дешёвая: «Казань, ~860 км»
+    total: Optional[int] = None       # сколько объявлений этого года по России
+    checked: int = 0                  # сколько объявлений открыли и прочитали
+    skipped: list[str] = field(default_factory=list)  # почему отбросили дешёвые
+    status: str = "ok"                # ok | нет объявлений | нет подходящих | не проверено: …
+
+
+# Признаки «не наш» в тексте объявления: учёт/происхождение не РФ и «не в наличии»
+FOREIGN_MARKERS = {
+    "беларус": "учёт в Беларуси", "белорус": "учёт в Беларуси", "учет рб": "учёт в Беларуси",
+    "учёт рб": "учёт в Беларуси", "учете в рб": "учёт в Беларуси", "учёте в рб": "учёт в Беларуси",
+    "номера рб": "учёт в Беларуси", "казахстан": "Казахстан", "учет кз": "Казахстан", "учёт кз": "Казахстан",
+    "армени": "Армения", "киргиз": "Киргизия", "кыргыз": "Киргизия", "узбекистан": "Узбекистан",
+    "не растаможен": "не растаможен", "без пробега по рф": "без пробега по РФ",
+    "без учета в рф": "не на учёте в РФ", "без учёта в рф": "не на учёте в РФ",
+    "не стоит на учете": "не на учёте в РФ", "не стоит на учёте": "не на учёте в РФ",
+    "эптс не оформлен": "не оформлен ЭПТС",
+}
+NOT_IN_STOCK_MARKERS = {
+    "под заказ": "под заказ", "на заказ": "под заказ", "предзаказ": "под заказ", "под привоз": "под привоз",
+    "привезем": "под привоз", "привезём": "под привоз", "в пути": "в пути", "ожидается поступление": "в пути",
+    "ожидаем поступление": "в пути", "поставка в течение": "в пути", "срок поставки": "в пути",
+}
+
+
+def listing_flags(text: str) -> list[str]:
+    """Почему объявление не годится для сравнения (пусто — годится)."""
+    low = " " + text.lower().replace("ё", "е") + " "
+    out: list[str] = []
+    for bad in BAD_LISTING:
+        if bad.replace("ё", "е") in low:
+            out.append("битая/ремонт")
+            break
+    for markers in (FOREIGN_MARKERS, NOT_IN_STOCK_MARKERS):
+        for k, why in markers.items():
+            if k.replace("ё", "е") in low and why not in out:
+                out.append(why)
+    if re.search(r"\bрб\b", low) and "учёт в Беларуси" not in out:
+        out.append("учёт в Беларуси")
+    return out
+
+
+def comparable(items: list[Listing], year: Optional[int], mileage: Optional[int]) -> list[Listing]:
+    """Тот же год, пробег не сильно отличается (±35 %, но не уже ±25 тыс.); по возрастанию цены."""
+    same = [x for x in items if x.year in (None, year)]
+    if mileage:
+        width = max(25_000, mileage * 0.35)
+        same = [x for x in same if x.mileage is not None and abs(x.mileage - mileage) <= width]
+    return sorted(same, key=lambda x: x.price)
+
+
+def main_text(html: str) -> str:
+    """Текст объявления без шапки, меню, подвала, скриптов и блоков «похожие»."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "header", "footer", "nav", "aside", "svg"]):
+        tag.decompose()
+    for el in soup.select('[class*="Similar"], [class*="similar"], [class*="Recommend"], [data-ftid*="similar"]'):
+        el.decompose()
+    root = soup.find("main") or soup.body or soup
+    return root.get_text(" ", strip=True)
 
 
 def norm(s: str) -> str:
@@ -162,9 +224,12 @@ def price_for(items: list[Listing], mileage: Optional[int], min_comps: int = 3) 
     return int(statistics.median(prices)), len(prices), "ok"
 
 
-def liquidity_from_count(total: int, median_price: float) -> tuple[int, int]:
+RUSSIA_STEPS = [(300, 9), (150, 8), (80, 7), (40, 6), (20, 5), (10, 4)]
+MOSCOW_STEPS = [(60, 9), (30, 8), (15, 7), (8, 6), (4, 5), (2, 4)]
+
+
+def liquidity_from_count(total: int, median_price: float, steps: list = RUSSIA_STEPS) -> tuple[int, int]:
     """Ликвидность 1..10 и примерный срок продажи по числу объявлений того же года."""
-    steps = [(300, 9), (150, 8), (80, 7), (40, 6), (20, 5), (10, 4)]
     score = next((sc for n, sc in steps if total >= n), 3)
     if median_price >= 15_000_000:
         score -= 2  # очень дорогие машины покупают единицы

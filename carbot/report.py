@@ -85,7 +85,7 @@ C_REGION = Col("Регион", 16, lambda e: _lot(e.car, "федеральный
 C_SRS = Col("Стартовая цена\n(СРС)", 15, lambda e: e.car.price, "money")
 C_MINUS = Col("После скидки\n−15 %", 15, lambda e: e.purchase_price, "money")
 C_PAY = Col("Платим:\n× 0,86 (нал)", 15, lambda e: e.cash_price, "money")
-C_MEDIAN = Col("Рынок: итог\n(медиана площадок)", 16, lambda e: e.market.median_price if e.market else None, "money")
+C_MEDIAN = Col("Рынок: самая\nнизкая цена", 15, lambda e: e.market.median_price if e.market else None, "money")
 C_SALE = Col("Продадим за\n(−5 % торг)", 15, lambda e: e.expected_sale, "money")
 C_PROFIT = Col("Прибыль", 14, lambda e: e.profit, "money")
 C_MARGIN = Col("Маржа", 8, _margin, "pct")
@@ -102,17 +102,36 @@ def _site(e: Evaluation, name: str) -> Optional[dict]:
 def _site_price(name: str) -> Col:
     def get(e: Evaluation):
         b = _site(e, name)
-        return b["median"] if b and b["median"] else (b["status"] if b else None)
-    return Col(f"{name}:\nмедиана", 14, get, "money")
+        return b["low"] if b and b.get("low") else (b["status"] if b else None)
+    return Col(f"{name}:\nмин. цена", 14, get, "money")
+
+
+def _site_place(name: str) -> Col:
+    return Col(f"{name}:\nгде стоит", 22, lambda e: (_site(e, name) or {}).get("low_place") or None)
 
 
 def _site_link(name: str) -> Col:
-    return Col(f"{name}\n↗", 9, lambda e: (_site(e, name) or {}).get("url") or None, "link")
+    """Ссылка на самое дешёвое подходящее объявление, иначе — на поиск."""
+    def get(e: Evaluation):
+        b = _site(e, name) or {}
+        return b.get("low_url") or b.get("url") or None
+    return Col(f"{name}:\nобъявление ↗", 12, get, "link")
 
 
-SITES = ("Дром", "Авто.ру", "Авито")
+def _site_skipped(e: Evaluation) -> str:
+    """Какие дешёвые объявления отбросили и почему — чтобы было видно, что проверка честная."""
+    lines = []
+    for b in getattr(e.market, "by_source", None) or []:
+        for sk in b.get("skipped", [])[:4]:
+            lines.append(f"{b['name']}: {sk}")
+    return "\n".join(lines)
+
+
+SITES = ("Дром", "Авто.ру")
 C_SITE_PRICES = [_site_price(n) for n in SITES]
+C_SITE_PLACES = [_site_place(n) for n in SITES]
 C_SITE_LINKS = [_site_link(n) for n in SITES]
+C_SKIPPED = Col("Отброшены дешевле\n(почему)", 44, _site_skipped, "wrap")
 C_DROM = Col("Дром", 9, _link, "link")
 C_PHOTO = Col("Фото", 9, lambda e: _lot(e.car, "фото"), "link")
 C_LOT = Col("Код лота", 10, lambda e: _lot(e.car, "код предложения", "код лота", "лот"))
@@ -246,7 +265,7 @@ def _summary(ws: Worksheet, evals: list[Evaluation], total_rows: int, source_nam
     ws["A1"] = "ТАЧКИ · отбор машин на перепродажу"
     ws["A1"].font = f(20, True)
     ws["A2"] = (f"{source_name} · {datetime.now():%d.%m.%Y %H:%M} · цены: "
-                f"{'Дром' if s.market_source == 'drom' else 'Claude + веб-поиск'}")
+                f"{'Claude + веб-поиск' if s.market_source == 'claude' else ', '.join({'drom': 'Дром', 'autoru': 'Авто.ру'}.get(k, k) for k in s.market_sources)}")
     ws["A2"].font = f(10, color=MUTED)
     ws.row_dimensions[1].height = 30
     ws.row_dimensions[5].height = 34
@@ -328,13 +347,16 @@ def _summary(ws: Worksheet, evals: list[Evaluation], total_rows: int, source_nam
     conds = [
         ("Цена закупки", f"стартовая цена (СРС) − {s.seller_discount:.0%}, затем × {s.cash_factor} "
                          "(наличка, полный НДС)"),
-        ("Рынок", "Дром, Авто.ру и Авито: у каждой площадки медиана похожих объявлений (тот же год, пробег ±35 %, "
-                  "без битых); итог — медиана трёх площадок. Вывод о выгоде — только если проверены все"
+        ("Рынок", f"Дром и Авто.ру, машины до {str(s.max_distance_km)[:-3] + ' ' + str(s.max_distance_km)[-3:]} км от Москвы (примерно по дорогам): самые "
+                  "дешёвые объявления того же года с похожим пробегом (±35 %); каждое открыто и прочитано — учёт "
+                  "только РФ, в наличии (не под заказ / в пути), не битая. Рынок — самая низкая подходящая цена. "
+                  "Вывод о выгоде — только если проверены обе площадки"
          if s.market_source != "claude" else "Claude с веб-поиском по площадкам и форумам"),
         ("Прибыль", f"рынок × {1 - s.sale_discount:.2f} (торг) − цена закупки − {s.prep_cost_rub:,} ₽ подготовка"
                     .replace(",", " ")),
         ("Лоты", f"тип: {', '.join(s.vehicle_types)}; статус: {', '.join(s.allow_statuses)}"
-                 + ("; без правого руля" if s.skip_rhd else "") + ("; с ключами" if s.skip_no_keys else "")),
+                 + ("; без правого руля" if s.skip_rhd else "") + ("; с ключами" if s.skip_no_keys else "")
+                 + ("; без VIN США/Канады/Мексики" if s.skip_us_vin else "")),
         ("Состояние", "не " + ", ".join(s.bad_conditions) + "; в комментариях нет: " + ", ".join(s.bad_words)),
         ("Год и пробег", f"от {s.min_year or s.current_year - s.max_age_years} г.; от {s.min_mileage_km} "
                          f"до {s.max_mileage_km:,} км (0–1 км — не заводится); "
@@ -345,10 +367,11 @@ def _summary(ws: Worksheet, evals: list[Evaluation], total_rows: int, source_nam
     for i, (k, v) in enumerate(conds, start=1):
         r = row + i - 1
         ws.cell(r, 2, k).font = f(10, True)
+        ws.cell(r, 2).alignment = Alignment(vertical="top")
         ws.merge_cells(start_row=r, start_column=3, end_row=r, end_column=12)
         ws.cell(r, 3, v).font = f(10)
         ws.cell(r, 3).alignment = Alignment(wrap_text=True, vertical="top")
-        ws.row_dimensions[r].height = 28 if len(v) > 110 else 16
+        ws.row_dimensions[r].height = 15 * max(1, -(-len(v) // 105)) + 2  # по числу строк текста
     ws.page_setup.orientation = "landscape"
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.page_setup.fitToWidth = 1
@@ -388,7 +411,7 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
                "Прошли все этапы. Отсортировано по прибыли. VIN проверьте в Автотеке перед покупкой, "
                "если она не подключена.",
                [C_CAR, C_YEAR, C_KM, C_REGION, C_SRS, C_MINUS, C_PAY, *C_SITE_PRICES, C_MEDIAN, C_SALE,
-                C_PROFIT, C_MARGIN, C_LIQ, C_DAYS, *C_SITE_LINKS, C_PHOTO, Col("Владель-\nцев", 9, lambda e: _history(e, "owners"), "int"),
+                C_PROFIT, C_MARGIN, C_LIQ, C_DAYS, *C_SITE_LINKS, *C_SITE_PLACES, C_PHOTO, Col("Владель-\nцев", 9, lambda e: _history(e, "owners"), "int"),
                 Col("ДТП", 6, lambda e: _history(e, "accidents"), "int"),
                 C_LOT, C_VIN, C_MOD, C_COND, C_KEYS, C_NOTES],
                good, s.min_profit_rub)
@@ -401,8 +424,8 @@ def write_result(evals: list[Evaluation], path: str | Path, s: Settings, source_
                + "Здесь видно и то, что не дотянуло.",
                [Col("Итог", 9, lambda e: "БЕРЁМ" if e.passed else "нет", "badge"),
                 C_CAR, C_YEAR, C_KM, C_SRS, C_MINUS, C_PAY, *C_SITE_PRICES, C_MEDIAN, C_SALE, C_PROFIT, C_MARGIN,
-                C_LIQ, C_ADS, *C_SITE_LINKS,
-                Col("Почему нет", 50, lambda e: "\n".join(e.reasons), "wrap")],
+                C_LIQ, C_ADS, *C_SITE_LINKS, *C_SITE_PLACES,
+                Col("Почему нет", 50, lambda e: "\n".join(e.reasons), "wrap"), C_SKIPPED],
                priced, s.min_profit_rub)
 
     if cands:
